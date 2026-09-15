@@ -25,9 +25,9 @@ Alternatively, install the `.flatpak` bundle from this repository's releases.
 1. Choose a monitor/window or a screen region.
 2. Toggle microphone and desktop audio. Microphone is enabled by default;
    desktop audio is optional.
-3. Toggle the webcam button next to the microphone, select a camera, and use
-   **Show webcam bubble**. Drag the floating camera window to position it. The
-   bubble remains live during recording; its size menu offers three sizes.
+3. Select a camera and toggle the webcam button next to the microphone to show
+   the floating bubble. Drag it to position it; toggle the webcam off to hide it.
+   The bubble remains live during recording; its size menu offers three sizes.
 4. Press **Record**. Press **Stop** when finished.
 5. The completion window appears and copies the video file. Paste in an app
    that accepts file attachments. **Copy video** copies the latest recording again;

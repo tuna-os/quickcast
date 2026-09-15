@@ -268,17 +268,6 @@ impl Window {
         corners.set_tooltip_text(Some("Webcam corner"));
         settings.bind_camera_corner(&corners, "selected").build();
         controls.append(&corners);
-        let preview = gtk::Button::with_label("Show webcam bubble");
-        preview.connect_clicked(clone!(
-            #[weak(rename_to = window)]
-            self,
-            move |_| {
-                if let Err(err) = window.preview_camera() {
-                    window.present_recording_error_dialog(&err);
-                }
-            }
-        ));
-        controls.append(&preview);
         let sizes = gtk::DropDown::from_strings(&["Small bubble", "Medium bubble", "Large bubble"]);
         sizes.set_selected(1);
         sizes.connect_selected_notify(clone!(
@@ -372,17 +361,6 @@ impl Window {
         if let Some(bubble) = self.imp().bubble.borrow().as_ref() {
             bubble.feed.place(x, y, width);
         }
-    }
-
-    fn preview_camera(&self) -> Result<()> {
-        let settings = Application::get().settings().clone();
-        settings.set_record_camera(true);
-        let bubble = self.imp().bubble.borrow();
-        let bubble = bubble
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("The camera could not be opened"))?;
-        bubble.window.present();
-        Ok(())
     }
 
     /// Returns `true` if the window is busy with a recording.
