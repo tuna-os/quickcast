@@ -14,11 +14,11 @@ raw = subprocess.check_output([
     "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"
 ])
 assert len(raw) == 640 * 360 * 3
-for label, x, y in [("screen", 100, 100), ("webcam", 570, 300)]:
+for label, x, y in [("screen", 100, 100), ("webcam", 570, 285), ("transparent corner", 507, 227), ("transparent corner", 627, 347)]:
     offset = (y * 640 + x) * 3
     red, green, blue = raw[offset:offset + 3]
-    if label == "screen":
+    if label != "webcam":
         assert blue > 180 and red < 50, (label, red, green, blue)
     else:
         assert red > 180 and blue < 50, (label, red, green, blue)
-print("Verified H.264/AAC, duration, screen pixels and webcam overlay pixels")
+print("Verified H.264/AAC, duration, screen pixels and circular webcam overlay with transparent corners")

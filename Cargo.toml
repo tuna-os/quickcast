@@ -22,9 +22,10 @@ futures-channel = "0.3.19"
 futures-util = { version = "0.3", default-features = false }
 gdk-wayland = { package = "gdk4-wayland", version = "0.11" }
 gdk-x11 = { package = "gdk4-x11", version = "0.11" }
-gettext-rs = { version = "0.7.0", features = ["gettext-system"] }
+gettext-rs = { version = "0.8", features = ["gettext-system"] }
 gsettings-macro = "0.2"
 gst = { package = "gstreamer", version = "0.25", features = ["v1_22"] }
+gst-app = { package = "gstreamer-app", version = "0.25" }
 gst-plugin-gif = "0.15"
 gst-plugin-gtk4 = { version = "0.15", features = [
     "dmabuf",
@@ -39,3 +40,7 @@ serde_yaml = "0.9.31"
 serde = { version = "1.0.196", features = ["derive"] }
 tracing = "0.1.36"
 tracing-subscriber = "0.3.15"
+
+[patch.crates-io]
+# Build-time XML parser patch; retain the upstream MPL-2.0 source and license.
+gsettings-macro = { path = "build-aux/gsettings-macro" }

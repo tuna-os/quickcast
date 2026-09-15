@@ -107,8 +107,10 @@ impl Application {
     }
 
     pub fn window(&self) -> Window {
-        self.active_window()
-            .map_or_else(|| Window::new(self), |w| w.downcast().unwrap())
+        self.windows()
+            .into_iter()
+            .find_map(|w| w.downcast::<Window>().ok())
+            .unwrap_or_else(|| Window::new(self))
     }
 
     pub async fn send_record_success_notification(
@@ -170,12 +172,13 @@ impl Application {
     }
 
     async fn quit_request(&self) -> glib::Propagation {
-        if let Some(window) = self.active_window() {
-            let window = window.downcast::<Window>().unwrap();
-
-            if window.is_busy() {
-                return window.run_quit_confirmation_dialog().await;
-            }
+        if let Some(window) = self
+            .windows()
+            .into_iter()
+            .find_map(|w| w.downcast::<Window>().ok())
+            && window.is_busy()
+        {
+            return window.run_quit_confirmation_dialog().await;
         }
 
         glib::Propagation::Proceed
@@ -244,7 +247,16 @@ impl Application {
                     gtk::prelude::WidgetExt::activate_action(&window, "win.toggle-record", None);
             })
             .build();
+        let bubble_position_action = gio::ActionEntry::builder("bubble-position")
+            .parameter_type(Some(&<(f64, f64, f64)>::static_variant_type()))
+            .activate(|obj: &Self, _, param| {
+                if let Some((x, y, width)) = param.and_then(|p| p.get::<(f64, f64, f64)>()) {
+                    obj.window().place_bubble(x, y, width);
+                }
+            })
+            .build();
         self.add_action_entries([
+            bubble_position_action,
             toggle_record_action,
             launch_uri_action,
             show_in_files_action,

@@ -56,6 +56,7 @@ mod imp {
 
         #[template_child]
         pub(super) quick_controls: TemplateChild<gtk::Box>,
+        pub(super) bubble: RefCell<Option<crate::bubble::Bubble>>,
         pub(super) last_file: RefCell<Option<gio::File>>,
         pub(super) pending_copy: RefCell<Option<gio::File>>,
         pub(super) copy_status: gtk::Label,
@@ -115,6 +116,22 @@ mod imp {
 
             obj.setup_settings();
             obj.setup_quick_controls();
+            let settings = Application::get().settings().clone();
+            settings.connect_record_camera_changed(clone!(
+                #[weak]
+                obj,
+                move |_| {
+                    obj.refresh_bubble();
+                }
+            ));
+            settings.connect_camera_device_changed(clone!(
+                #[weak]
+                obj,
+                move |_| {
+                    obj.refresh_bubble();
+                }
+            ));
+            obj.refresh_bubble();
             obj.connect_is_active_notify(|window| {
                 if window.is_active() {
                     window.copy_pending_file();
@@ -212,6 +229,10 @@ impl Window {
         let controls = &self.imp().quick_controls;
         let settings = Application::get().settings().clone();
         let cameras = crate::camera::devices();
+        if cameras.is_empty() {
+            settings.set_record_camera(false);
+        }
+        self.action_set_enabled("win.record-camera", !cameras.is_empty());
         let names: Vec<&str> = cameras.iter().map(|(name, _)| name.as_str()).collect();
         let camera = gtk::DropDown::from_strings(if names.is_empty() {
             &["No camera detected"]
@@ -241,16 +262,13 @@ impl Window {
                 }
             }
         ));
-        let enabled = gtk::CheckButton::with_label("Include webcam in recording");
-        settings.bind_record_camera(&enabled, "active").build();
-        controls.append(&enabled);
         controls.append(&camera);
         let corners =
             gtk::DropDown::from_strings(&["Top left", "Top right", "Bottom left", "Bottom right"]);
         corners.set_tooltip_text(Some("Webcam corner"));
         settings.bind_camera_corner(&corners, "selected").build();
         controls.append(&corners);
-        let preview = gtk::Button::with_label("Preview camera");
+        let preview = gtk::Button::with_label("Show webcam bubble");
         preview.connect_clicked(clone!(
             #[weak(rename_to = window)]
             self,
@@ -261,6 +279,19 @@ impl Window {
             }
         ));
         controls.append(&preview);
+        let sizes = gtk::DropDown::from_strings(&["Small bubble", "Medium bubble", "Large bubble"]);
+        sizes.set_selected(1);
+        sizes.connect_selected_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |sizes| {
+                if let Some(bubble) = obj.imp().bubble.borrow().as_ref() {
+                    let width = [160, 240, 320][sizes.selected().min(2) as usize];
+                    bubble.window.set_default_size(width, width);
+                }
+            }
+        ));
+        controls.append(&sizes);
         let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let copy = gtk::Button::with_label("Copy video");
         copy.set_hexpand(true);
@@ -296,47 +327,61 @@ impl Window {
         controls.append(&self.imp().copy_status);
     }
 
-    fn preview_camera(&self) -> Result<()> {
-        use gst::prelude::*;
-        let pipeline = gst::Pipeline::new();
-        let source = crate::camera::source(&Application::get().settings().camera_device())?;
-        let sink = gst::ElementFactory::make("gtk4paintablesink").build()?;
-        pipeline.add_many([source.upcast_ref(), &sink])?;
-        source.link(&sink)?;
-        let picture =
-            gtk::Picture::for_paintable(&sink.property::<gtk::gdk::Paintable>("paintable"));
-        picture.set_size_request(320, 240);
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        let header = adw::HeaderBar::new();
-        content.append(&header);
-        content.append(&picture);
-        let status = gtk::Label::new(Some("Close this preview before recording"));
-        status.set_wrap(true);
-        content.append(&status);
-        let dialog = adw::Dialog::builder()
-            .title("Camera preview")
-            .child(&content)
-            .build();
-        let watch = pipeline.bus().unwrap().add_watch_local(move |_, message| {
-            if let gst::MessageView::Error(error) = message.view() {
-                status.set_label(&format!("Camera unavailable: {}", error.error()));
-            }
-            glib::ControlFlow::Continue
-        })?;
-        let watch = RefCell::new(Some(watch));
-        dialog.connect_closed(clone!(
-            #[strong]
-            pipeline,
-            move |_| {
-                let _ = pipeline.set_state(gst::State::Null);
-                watch.take();
-            }
-        ));
-        if let Err(error) = pipeline.set_state(gst::State::Playing) {
-            let _ = pipeline.set_state(gst::State::Null);
-            return Err(error.into());
+    fn refresh_bubble(&self) {
+        if self.is_busy() {
+            return;
         }
-        dialog.present(Some(self));
+        let previous = self.imp().bubble.take();
+        drop(previous);
+        let settings = Application::get().settings().clone();
+        if !settings.record_camera() {
+            return;
+        }
+        match crate::bubble::Bubble::new(&settings.camera_device(), settings.camera_corner()) {
+            Ok(bubble) => {
+                bubble.window.connect_close_request(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    #[upgrade_or]
+                    glib::Propagation::Proceed,
+                    move |_| {
+                        if !obj.is_busy() {
+                            Application::get().settings().set_record_camera(false);
+                        }
+                        glib::Propagation::Stop
+                    }
+                ));
+                self.imp().bubble.replace(Some(bubble));
+            }
+            Err(error) => self.present_recording_error_dialog(&error),
+        }
+    }
+
+    pub fn camera_feed(&self) -> Result<crate::bubble::CameraFeed> {
+        self.imp()
+            .bubble
+            .borrow()
+            .as_ref()
+            .map(|b| b.feed.clone())
+            .ok_or_else(|| {
+                anyhow::anyhow!("Enable the webcam and select a working camera before recording")
+            })
+    }
+
+    pub fn place_bubble(&self, x: f64, y: f64, width: f64) {
+        if let Some(bubble) = self.imp().bubble.borrow().as_ref() {
+            bubble.feed.place(x, y, width);
+        }
+    }
+
+    fn preview_camera(&self) -> Result<()> {
+        let settings = Application::get().settings().clone();
+        settings.set_record_camera(true);
+        let bubble = self.imp().bubble.borrow();
+        let bubble = bubble
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("The camera could not be opened"))?;
+        bubble.window.present();
         Ok(())
     }
 
@@ -812,6 +857,7 @@ impl Window {
 
         self.add_action(&settings.create_record_desktop_audio_action());
         self.add_action(&settings.create_record_microphone_action());
+        self.add_action(&settings.create_record_camera_action());
         self.add_action(&settings.create_show_pointer_action());
         self.add_action(&settings.create_capture_mode_action());
     }
@@ -841,13 +887,127 @@ mod quickcast_tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let file = gio::File::for_path("/tmp/Quickcast test clip.mp4");
-        window.imp().pending_copy.replace(Some(file));
+        window.imp().pending_copy.replace(Some(file.clone()));
         window.copy_pending_file();
         let formats = window.clipboard().formats();
         assert!(formats.contains_type(gtk::gdk::FileList::static_type()));
         assert!(formats.contain_mime_type("text/uri-list"));
         assert!(formats.contain_mime_type("x-special/gnome-copied-files"));
         assert!(window.imp().copy_status.label().contains("Video copied"));
+        for format in ["text/uri-list", "x-special/gnome-copied-files", "files"] {
+            let mut child = std::process::Command::new("python3")
+                .arg(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/scripts/read-clipboard.py"
+                ))
+                .args([format, file.uri().as_str()])
+                .spawn()
+                .unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+            let status = loop {
+                while context.pending() {
+                    context.iteration(false);
+                }
+                if let Some(status) = child.try_wait().unwrap() {
+                    break status;
+                }
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    panic!("Clipboard consumer did not exit");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            };
+            assert!(
+                status.success(),
+                "Clipboard format {format} failed in another process"
+            );
+        }
+        // Exercise the floating window and the shared camera feed without a
+        // physical camera. A second receiver must not open another camera.
+        use gst::prelude::*;
+        gstgtk4::plugin_register_static().unwrap();
+        let source = gst::parse::bin_from_description(
+            "videotestsrc is-live=true pattern=red ! video/x-raw,width=320,height=240,framerate=30/1 ! identity", true).unwrap();
+        let circular = crate::camera::circular_filter().unwrap();
+        let camera = gst::Bin::new();
+        camera.add_many([&source, &circular]).unwrap();
+        source.link(&circular).unwrap();
+        camera
+            .add_pad(&gst::GhostPad::with_target(&circular.static_pad("src").unwrap()).unwrap())
+            .unwrap();
+        let bubble = crate::bubble::Bubble::from_source(&camera, 3).unwrap();
+        let bubble_paintable = gtk::WidgetPaintable::new(Some(&bubble.window));
+        assert_eq!(app.window(), window);
+        let capture = gst::Pipeline::new();
+        let screen = gst::parse::bin_from_description(
+            "videotestsrc is-live=true pattern=blue ! video/x-raw,width=640,height=360,framerate=30/1 ! identity", true).unwrap();
+        let output = gst::ElementFactory::make("fakesink")
+            .property("signal-handoffs", true)
+            .build()
+            .unwrap();
+        let frames = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        output.connect("handoff", false, {
+            let frames = frames.clone();
+            move |_| {
+                frames.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                None
+            }
+        });
+        capture.add_many([screen.upcast_ref(), &output]).unwrap();
+        crate::camera::attach(
+            &capture,
+            screen.upcast_ref(),
+            &output,
+            Some((&bubble.feed, 3)),
+        )
+        .unwrap();
+        bubble.feed.place(0.25, 0.75, 0.2);
+        capture.set_state(gst::State::Playing).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            while context.pending() {
+                context.iteration(false);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let pad = capture
+            .by_name("quickcast-compositor")
+            .unwrap()
+            .static_pad("sink_1")
+            .unwrap();
+        assert_eq!(pad.property::<i32>("xpos"), 128);
+        assert_eq!(pad.property::<i32>("ypos"), 174);
+        assert!(frames.load(std::sync::atomic::Ordering::Relaxed) >= 5);
+        capture.set_state(gst::State::Null).unwrap();
+        let snapshot = gtk::Snapshot::new();
+        let width = bubble.window.width();
+        let height = bubble.window.height();
+        assert_eq!(width, height, "Bubble must remain square");
+        bubble_paintable.snapshot(&snapshot, f64::from(width), f64::from(height));
+        let node = snapshot.to_node().expect("Bubble rendered no content");
+        let texture = bubble.window.renderer().unwrap().render_texture(
+            &node,
+            Some(&gtk::graphene::Rect::new(
+                0.0,
+                0.0,
+                width as f32,
+                height as f32,
+            )),
+        );
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        texture.download(&mut pixels, (width * 4) as usize);
+        assert_eq!(pixels[3], 0, "Bubble corner must be transparent");
+        assert_eq!(
+            pixels[((height / 2 * width + width / 2) * 4 + 3) as usize],
+            255,
+            "Bubble center must show the camera"
+        );
+        if let Ok(directory) = std::env::var("QUICKCAST_TEST_DIR") {
+            texture
+                .save_to_png(std::path::Path::new(&directory).join("bubble.png"))
+                .unwrap();
+        }
+        drop(bubble);
         if let Ok(directory) = std::env::var("QUICKCAST_TEST_DIR") {
             let snapshot = gtk::Snapshot::new();
             paintable.snapshot(

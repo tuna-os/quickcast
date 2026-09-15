@@ -26,6 +26,7 @@
 mod about;
 mod application;
 mod area_selector;
+mod bubble;
 mod camera;
 mod cancelled;
 mod config;
@@ -55,7 +56,10 @@ use self::{
 fn main() -> glib::ExitCode {
     tracing_subscriber::fmt::init();
 
-    gettextrs::setlocale(LocaleCategory::LcAll, "");
+    // SAFETY: initialization runs before GTK/GStreamer spawn any worker threads.
+    unsafe {
+        gettextrs::setlocale(LocaleCategory::LcAll, "");
+    }
     gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain.");
     gettextrs::textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain.");
 

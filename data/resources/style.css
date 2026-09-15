@@ -33,3 +33,9 @@ window.area-selector .view-port {
     color: var(--window-fg-color);
   }
 }
+
+window.quickcast-bubble {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+}

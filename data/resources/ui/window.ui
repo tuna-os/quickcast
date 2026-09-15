@@ -101,6 +101,15 @@
                         </child>
                         <child>
                           <object class="KoohaToggleButton">
+                            <property name="action-name">win.record-camera</property>
+                            <property name="default-icon-name">quickcast-camera-off-symbolic</property>
+                            <property name="toggled-icon-name">quickcast-camera-on-symbolic</property>
+                            <property name="default-tooltip-text" translatable="yes">Enable Webcam</property>
+                            <property name="toggled-tooltip-text" translatable="yes">Disable Webcam</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="KoohaToggleButton">
                             <property name="action-name">win.show-pointer</property>
                             <property name="default-icon-name">mouse-wireless-disabled-symbolic</property>
                             <property name="toggled-icon-name">mouse-wireless-symbolic</property>

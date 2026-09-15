@@ -23,7 +23,7 @@ pub struct PipelineBuilder {
     streams: Vec<Stream>,
     record_desktop_audio: bool,
     record_microphone: bool,
-    camera: Option<(String, u32)>,
+    camera: Option<(crate::bubble::CameraFeed, u32)>,
     select_area_data: Option<SelectAreaData>,
 }
 
@@ -58,7 +58,7 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn camera(&mut self, device: String, corner: u32) -> &mut Self {
+    pub fn camera(&mut self, device: crate::bubble::CameraFeed, corner: u32) -> &mut Self {
         self.camera = Some((device, corner));
         self
     }
@@ -124,14 +124,14 @@ impl PipelineBuilder {
                 &pipeline,
                 &videocrop,
                 &videoenc_queue,
-                self.camera.as_ref().map(|(d, c)| (d.as_str(), *c)),
+                self.camera.as_ref().map(|(d, c)| (d, *c)),
             )?;
         } else {
             crate::camera::attach(
                 &pipeline,
                 videosrc_bin.upcast_ref(),
                 &videoenc_queue,
-                self.camera.as_ref().map(|(d, c)| (d.as_str(), *c)),
+                self.camera.as_ref().map(|(d, c)| (d, *c)),
             )?;
         }
 

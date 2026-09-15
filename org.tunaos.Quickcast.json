@@ -17,7 +17,8 @@
     "--socket=pulseaudio",
     "--device=all",
     "--filesystem=xdg-videos",
-    "--env=KOOHA_EXPERIMENTAL=window-recording"
+    "--env=KOOHA_EXPERIMENTAL=window-recording",
+    "--filesystem=/run/udev:ro"
   ],
   "build-options": {
     "append-path": "/usr/lib/sdk/rust-stable/bin",

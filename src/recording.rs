@@ -220,8 +220,18 @@ impl Recording {
             pipeline_builder.record_microphone(settings.record_microphone());
         }
 
-        if settings.record_camera() {
-            pipeline_builder.camera(settings.camera_device(), settings.camera_corner());
+        // Monitor/region streams already include the floating webcam window.
+        // Compositing it again would duplicate the bubble. Window-only streams
+        // exclude other windows, so feed the same camera frames to the encoder.
+        if settings.record_camera()
+            && streams
+                .iter()
+                .any(|s| s.source_type() == Some(SourceType::WINDOW))
+        {
+            pipeline_builder.camera(
+                Application::get().window().camera_feed()?,
+                settings.camera_corner(),
+            );
         }
         // Build pipeline
         let pipeline = pipeline_builder.build().with_context(|| {

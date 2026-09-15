@@ -19,3 +19,5 @@ _repo/
 *.flatpak
 
 test-artifacts/
+
+*.shell-extension.zip

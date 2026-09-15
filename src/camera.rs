@@ -32,22 +32,13 @@ pub fn source(device: &str) -> Result<gst::Bin> {
         .build()?;
     // decodebin also accepts MJPEG-only cameras; do not assume raw USB frames.
     let decode = gst::ElementFactory::make("decodebin").build()?;
-    let convert = gst::ElementFactory::make("videoconvert").build()?;
-    let scale = gst::ElementFactory::make("videoscale").build()?;
-    let caps = gst::ElementFactory::make("capsfilter")
-        .property(
-            "caps",
-            gst::Caps::builder("video/x-raw")
-                .field("width", 320i32)
-                .field("height", 240i32)
-                .field("pixel-aspect-ratio", gst::Fraction::new(1, 1))
-                .build(),
-        )
+    let circular = circular_filter()?;
+    let capture_caps = gst::ElementFactory::make("capsfilter")
+        .property("caps", "video/x-raw,width=640,height=480,framerate=30/1;image/jpeg,width=640,height=480,framerate=30/1;video/x-raw;image/jpeg".parse::<gst::Caps>()?)
         .build()?;
-    bin.add_many([&source, &decode, &convert, &scale, &caps])?;
-    source.link(&decode)?;
-    gst::Element::link_many([&convert, &scale, &caps])?;
-    let sink = convert
+    bin.add_many([&source, &capture_caps, &decode, circular.upcast_ref()])?;
+    gst::Element::link_many([&source, &capture_caps, &decode])?;
+    let sink = circular
         .static_pad("sink")
         .context("Camera converter has no sink")?;
     decode.connect_pad_added(move |_, pad| {
@@ -58,8 +49,32 @@ pub fn source(device: &str) -> Result<gst::Bin> {
         }
     });
     bin.add_pad(&gst::GhostPad::with_target(
-        &caps.static_pad("src").unwrap(),
+        &circular.static_pad("src").unwrap(),
     )?)?;
+    Ok(bin)
+}
+
+/// Center-crop without stretching and clear the corners before preview/recording split.
+pub(crate) fn circular_filter() -> Result<gst::Bin> {
+    let bin = gst::parse::bin_from_description(
+        "videoconvert ! aspectratiocrop aspect-ratio=1/1 ! videoscale ! video/x-raw,format=BGRA,width=320,height=320,pixel-aspect-ratio=1/1 ! cairooverlay name=circle",
+        true,
+    )?;
+    bin.by_name("circle")
+        .unwrap()
+        .connect("draw", false, |values| {
+            let context = values[1].get::<gtk::cairo::Context>().unwrap();
+            if context.save().is_ok() {
+                context.set_operator(gtk::cairo::Operator::Clear);
+                context.set_fill_rule(gtk::cairo::FillRule::EvenOdd);
+                context.rectangle(0.0, 0.0, 320.0, 320.0);
+                context.new_sub_path();
+                context.arc(160.0, 160.0, 160.0, 0.0, std::f64::consts::TAU);
+                let _ = context.fill();
+                let _ = context.restore();
+            }
+            None
+        });
     Ok(bin)
 }
 
@@ -67,7 +82,7 @@ pub fn source(device: &str) -> Result<gst::Bin> {
 fn geometry(width: i32, height: i32, corner: u32) -> (i32, i32, i32, i32) {
     let margin = (width.min(height) / 40).max(0);
     let w = (width / 5).max(2).min((height * 4 / 9).max(2));
-    let h = (w * 3 / 4).max(2);
+    let h = w;
     let x = if corner.is_multiple_of(2) {
         margin
     } else {
@@ -85,12 +100,18 @@ pub fn attach(
     pipeline: &gst::Pipeline,
     screen: &gst::Element,
     output: &gst::Element,
-    camera: Option<(&str, u32)>,
+    camera: Option<(&crate::bubble::CameraFeed, u32)>,
 ) -> Result<()> {
     let input = camera
-        .map(|(device, corner)| source(device).map(|bin| (bin, corner)))
+        .map(|(device, corner)| device.source().map(|bin| (bin, corner)))
         .transpose()?;
-    attach_inputs(pipeline, screen, output, input)
+    attach_inputs(
+        pipeline,
+        screen,
+        output,
+        input,
+        camera.map(|(feed, _)| feed.placement.clone()),
+    )
 }
 
 fn attach_inputs(
@@ -98,8 +119,10 @@ fn attach_inputs(
     screen: &gst::Element,
     output: &gst::Element,
     camera: Option<(gst::Bin, u32)>,
+    placement: Option<std::sync::Arc<std::sync::Mutex<(f64, f64, f64)>>>,
 ) -> Result<()> {
     let compositor = gst::ElementFactory::make("compositor")
+        .name("quickcast-compositor")
         .property("ignore-inactive-pads", true)
         .build()?;
     let canvas = gst::ElementFactory::make("capsfilter").build()?;
@@ -127,42 +150,58 @@ fn attach_inputs(
     screen
         .static_pad("src")
         .context("Screen has no source pad")?
-        .add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |_, info| {
-            if let Some(gst::PadProbeData::Event(ref event)) = info.data
-                && let gst::EventView::Caps(caps) = event.view()
-                && let Some(s) = caps.caps().structure(0)
-                && let (Ok(w), Ok(h)) = (s.get::<i32>("width"), s.get::<i32>("height"))
-                && w > 0
-                && h > 0
-            {
-                canvas.set_property(
-                    "caps",
-                    gst::Caps::builder("video/x-raw")
-                        .field("width", w)
-                        .field("height", h)
-                        .build(),
-                );
-                let ratio = (1920.0 / f64::from(w)).min(1080.0 / f64::from(h)).min(1.0);
-                let ow = ((f64::from(w) * ratio) as i32 / 2 * 2).max(2);
-                let oh = ((f64::from(h) * ratio) as i32 / 2 * 2).max(2);
-                size.set_property(
-                    "caps",
-                    gst::Caps::builder("video/x-raw")
-                        .field("width", ow)
-                        .field("height", oh)
-                        .field("pixel-aspect-ratio", gst::Fraction::new(1, 1))
-                        .build(),
-                );
-                if let Some((ref pad, corner)) = overlay {
-                    let (x, y, width, height) = geometry(w, h, corner);
-                    pad.set_property("xpos", x);
-                    pad.set_property("ypos", y);
-                    pad.set_property("width", width);
-                    pad.set_property("height", height);
+        .add_probe(
+            gst::PadProbeType::EVENT_DOWNSTREAM | gst::PadProbeType::BUFFER,
+            move |pad, info| {
+                if let Some(gst::PadProbeData::Event(ref event)) = info.data
+                    && let gst::EventView::Caps(caps) = event.view()
+                    && let Some(s) = caps.caps().structure(0)
+                    && let (Ok(w), Ok(h)) = (s.get::<i32>("width"), s.get::<i32>("height"))
+                    && w > 0
+                    && h > 0
+                {
+                    canvas.set_property(
+                        "caps",
+                        gst::Caps::builder("video/x-raw")
+                            .field("width", w)
+                            .field("height", h)
+                            .build(),
+                    );
+                    let ratio = (1920.0 / f64::from(w)).min(1080.0 / f64::from(h)).min(1.0);
+                    let ow = ((f64::from(w) * ratio) as i32 / 2 * 2).max(2);
+                    let oh = ((f64::from(h) * ratio) as i32 / 2 * 2).max(2);
+                    size.set_property(
+                        "caps",
+                        gst::Caps::builder("video/x-raw")
+                            .field("width", ow)
+                            .field("height", oh)
+                            .field("pixel-aspect-ratio", gst::Fraction::new(1, 1))
+                            .build(),
+                    );
+                    if let Some((ref pad, corner)) = overlay {
+                        let (x, y, width, height) = geometry(w, h, corner);
+                        pad.set_property("xpos", x);
+                        pad.set_property("ypos", y);
+                        pad.set_property("width", width);
+                        pad.set_property("height", height);
+                    }
                 }
-            }
-            gst::PadProbeReturn::Ok
-        });
+                if let (Some(placement), Some((overlay_pad, _))) = (&placement, &overlay)
+                    && let Some(caps) = pad.current_caps()
+                    && let Some(s) = caps.structure(0)
+                    && let (Ok(w), Ok(h)) = (s.get::<i32>("width"), s.get::<i32>("height"))
+                {
+                    let (x, y, fraction) = *placement.lock().unwrap();
+                    let width = ((f64::from(w) * fraction) as i32).max(2).min(w).min(h);
+                    let height = width;
+                    overlay_pad.set_property("xpos", (f64::from(w - width) * x) as i32);
+                    overlay_pad.set_property("ypos", (f64::from(h - height) * y) as i32);
+                    overlay_pad.set_property("width", width);
+                    overlay_pad.set_property("height", height);
+                }
+                gst::PadProbeReturn::Ok
+            },
+        );
     Ok(())
 }
 
@@ -193,6 +232,13 @@ mod tests {
             "videotestsrc num-buffers=60 pattern=blue ! video/x-raw,width=640,height=360,framerate=30/1 ! identity", true).unwrap();
         let camera = gst::parse::bin_from_description(
             "videotestsrc num-buffers=60 pattern=red ! video/x-raw,width=320,height=240,framerate=30/1 ! identity", true).unwrap();
+        let rounded = circular_filter().unwrap();
+        let circular_camera = gst::Bin::new();
+        circular_camera.add_many([&camera, &rounded]).unwrap();
+        camera.link(&rounded).unwrap();
+        circular_camera
+            .add_pad(&gst::GhostPad::with_target(&rounded.static_pad("src").unwrap()).unwrap())
+            .unwrap();
         let audio = gst::parse::bin_from_description(
             "audiotestsrc num-buffers=100 samplesperbuffer=960 ! audio/x-raw,rate=48000 ! queue",
             true,
@@ -210,7 +256,8 @@ mod tests {
             &pipeline,
             screen.upcast_ref(),
             &video_queue,
-            Some((camera, 3)),
+            Some((circular_camera, 3)),
+            None,
         )
         .unwrap();
         crate::profile::Profile::from_id("mp4")

@@ -1,0 +1,8 @@
+<schemalist>
+  <schema id="org.gnome.shell.extensions.quickcast" path="/org/gnome/shell/extensions/quickcast/">
+    <key name="x" type="d"><default>1.0</default></key>
+    <key name="y" type="d"><default>1.0</default></key>
+    <key name="width" type="i"><default>240</default></key>
+    <key name="height" type="i"><default>240</default></key>
+  </schema>
+</schemalist>
