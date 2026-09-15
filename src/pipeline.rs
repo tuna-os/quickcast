@@ -23,6 +23,7 @@ pub struct PipelineBuilder {
     streams: Vec<Stream>,
     record_desktop_audio: bool,
     record_microphone: bool,
+    camera: Option<(String, u32)>,
     select_area_data: Option<SelectAreaData>,
 }
 
@@ -42,6 +43,7 @@ impl PipelineBuilder {
             streams,
             record_desktop_audio: false,
             record_microphone: false,
+            camera: None,
             select_area_data: None,
         }
     }
@@ -53,6 +55,11 @@ impl PipelineBuilder {
 
     pub fn record_microphone(&mut self, record_microphone: bool) -> &mut Self {
         self.record_microphone = record_microphone;
+        self
+    }
+
+    pub fn camera(&mut self, device: String, corner: u32) -> &mut Self {
+        self.camera = Some((device, corner));
         self
     }
 
@@ -113,9 +120,19 @@ impl PipelineBuilder {
 
             videosrc_bin.link(&videoscale)?;
             videoscale.link_filtered(&videocrop, &videoscale_caps)?;
-            videocrop.link(&videoenc_queue)?;
+            crate::camera::attach(
+                &pipeline,
+                &videocrop,
+                &videoenc_queue,
+                self.camera.as_ref().map(|(d, c)| (d.as_str(), *c)),
+            )?;
         } else {
-            videosrc_bin.link(&videoenc_queue)?;
+            crate::camera::attach(
+                &pipeline,
+                videosrc_bin.upcast_ref(),
+                &videoenc_queue,
+                self.camera.as_ref().map(|(d, c)| (d.as_str(), *c)),
+            )?;
         }
 
         let audioenc_queue = if self.record_desktop_audio || self.record_microphone {

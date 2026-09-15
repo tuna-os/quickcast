@@ -21,8 +21,9 @@ use crate::{
 pub fn present_dialog(parent: &impl IsA<gtk::Widget>) {
     let dialog = adw::AboutDialog::builder()
         .application_icon(APP_ID)
-        .application_name(gettext("Kooha"))
-        .developer_name("Dave Patrick Caberto")
+        .application_name(gettext("Quickcast"))
+        .comments("A quick recording and sharing app derived from Kooha.")
+        .developer_name("Quickcast contributors; based on Kooha by Dave Patrick Caberto")
         .version(VERSION)
         .copyright("© 2024 Dave Patrick Caberto")
         .license_type(gtk::License::Gpl30)
@@ -33,8 +34,6 @@ pub fn present_dialog(parent: &impl IsA<gtk::Widget>) {
         ])
         // Translators: Replace "translator-credits" with your names. Put a comma between.
         .translator_credits(gettext("translator-credits"))
-        .issue_url("https://github.com/SeaDve/Kooha/issues")
-        .support_url("https://github.com/SeaDve/Kooha/discussions")
         .debug_info(debug_info())
         .debug_info_filename("kooha-debug-info")
         .release_notes_version("2.3.0")

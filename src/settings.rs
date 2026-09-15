@@ -61,7 +61,7 @@ impl Settings {
         let saving_location =
             glib::user_special_dir(glib::UserDirectory::Videos).unwrap_or_else(glib::home_dir);
 
-        let kooha_saving_location = saving_location.join("Kooha");
+        let kooha_saving_location = saving_location.join("Quickcast");
 
         if let Err(err) = fs::create_dir_all(&kooha_saving_location) {
             tracing::warn!(

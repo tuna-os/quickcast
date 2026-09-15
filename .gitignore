@@ -11,3 +11,11 @@ src/config.rs
 .flatpak/
 vendor/
 .vscode/
+
+*.log
+_stage/
+_app/
+_repo/
+*.flatpak
+
+test-artifacts/

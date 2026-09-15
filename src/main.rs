@@ -26,6 +26,7 @@
 mod about;
 mod application;
 mod area_selector;
+mod camera;
 mod cancelled;
 mod config;
 mod device;
@@ -58,7 +59,7 @@ fn main() -> glib::ExitCode {
     gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain.");
     gettextrs::textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain.");
 
-    glib::set_application_name(&gettext("Kooha"));
+    glib::set_application_name(&gettext("Quickcast"));
 
     gst::init().expect("Unable to start gstreamer.");
     gstgif::plugin_register_static().expect("Failed to register gif plugin.");

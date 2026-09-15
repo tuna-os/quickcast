@@ -1,0 +1,60 @@
+{
+  "app-id": "org.tunaos.Quickcast",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "50",
+  "sdk": "org.gnome.Sdk",
+  "sdk-extensions": [
+    "org.freedesktop.Sdk.Extension.rust-stable"
+  ],
+  "command": "kooha",
+  "tags": [
+    "latest"
+  ],
+  "finish-args": [
+    "--share=ipc",
+    "--socket=fallback-x11",
+    "--socket=wayland",
+    "--socket=pulseaudio",
+    "--device=all",
+    "--filesystem=xdg-videos",
+    "--env=KOOHA_EXPERIMENTAL=window-recording"
+  ],
+  "build-options": {
+    "append-path": "/usr/lib/sdk/rust-stable/bin",
+    "build-args": [
+      "--share=network"
+    ],
+    "env": {
+      "CARGO_BUILD_JOBS": "2"
+    }
+  },
+  "modules": [
+    {
+      "name": "quickcast",
+      "buildsystem": "simple",
+      "build-commands": [
+        "meson setup _build --prefix=/app -Dprofile=default",
+        "ninja -C _build",
+        "meson install -C _build --no-rebuild"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": ".",
+          "skip": [
+            ".git",
+            "_build",
+            "_app",
+            "_stage",
+            "_repo",
+            "test-artifacts",
+            "Quickcast.flatpak"
+          ]
+        }
+      ],
+      "test-commands": [
+        "GSETTINGS_BACKEND=memory GSK_RENDERER=cairo meson test -C _build --print-errorlogs"
+      ]
+    }
+  ]
+}

@@ -54,6 +54,12 @@ mod imp {
         #[template_child]
         pub(super) flushing_progress_icon: TemplateChild<ProgressIcon>,
 
+        #[template_child]
+        pub(super) quick_controls: TemplateChild<gtk::Box>,
+        pub(super) last_file: RefCell<Option<gio::File>>,
+        pub(super) pending_copy: RefCell<Option<gio::File>>,
+        pub(super) copy_status: gtk::Label,
+
         pub(super) inhibit_cookie: RefCell<Option<u32>>,
         pub(super) recording: RefCell<Option<(Recording, Vec<glib::SignalHandlerId>)>>,
     }
@@ -108,6 +114,12 @@ mod imp {
             }
 
             obj.setup_settings();
+            obj.setup_quick_controls();
+            obj.connect_is_active_notify(|window| {
+                if window.is_active() {
+                    window.copy_pending_file();
+                }
+            });
 
             obj.update_view();
             obj.update_title_label();
@@ -160,6 +172,172 @@ glib::wrapper! {
 impl Window {
     pub fn new(app: &Application) -> Self {
         glib::Object::builder().property("application", app).build()
+    }
+
+    fn copy_pending_file(&self) {
+        let Some(file) = self.imp().pending_copy.take() else {
+            return;
+        };
+        // FileList enables GTK's portal file transfer for Flatpak destinations.
+        // URI and GNOME file-manager formats also serve non-GTK recipients.
+        let files = gtk::gdk::FileList::from_array(std::slice::from_ref(&file));
+        let uri = format!("{}\r\n", file.uri());
+        let copied = format!("copy\n{}", file.uri());
+        let content = gtk::gdk::ContentProvider::new_union(&[
+            gtk::gdk::ContentProvider::for_value(&files.to_value()),
+            gtk::gdk::ContentProvider::for_bytes(
+                "text/uri-list",
+                &glib::Bytes::from_owned(uri.into_bytes()),
+            ),
+            gtk::gdk::ContentProvider::for_bytes(
+                "x-special/gnome-copied-files",
+                &glib::Bytes::from_owned(copied.into_bytes()),
+            ),
+        ]);
+        match self.clipboard().set_content(Some(&content)) {
+            Ok(()) => self
+                .imp()
+                .copy_status
+                .set_label("Video copied — paste it as an attachment"),
+            Err(err) => {
+                tracing::warn!(?err, "Could not copy recording");
+                self.imp()
+                    .copy_status
+                    .set_label("Saved. Click Copy video to try again.");
+            }
+        }
+    }
+
+    fn setup_quick_controls(&self) {
+        let controls = &self.imp().quick_controls;
+        let settings = Application::get().settings().clone();
+        let cameras = crate::camera::devices();
+        let names: Vec<&str> = cameras.iter().map(|(name, _)| name.as_str()).collect();
+        let camera = gtk::DropDown::from_strings(if names.is_empty() {
+            &["No camera detected"]
+        } else {
+            &names
+        });
+        camera.set_sensitive(!names.is_empty());
+        camera.set_tooltip_text(Some("Camera"));
+        if let Some(index) = cameras
+            .iter()
+            .position(|(_, path)| path == &settings.camera_device())
+        {
+            camera.set_selected(index as u32);
+        } else if settings.camera_device().is_empty()
+            && let Some((_, path)) = cameras.first()
+        {
+            settings.set_camera_device(path);
+        } else {
+            camera.set_selected(gtk::INVALID_LIST_POSITION);
+        }
+        camera.connect_selected_notify(clone!(
+            #[strong]
+            settings,
+            move |dropdown| {
+                if let Some((_, path)) = cameras.get(dropdown.selected() as usize) {
+                    settings.set_camera_device(path);
+                }
+            }
+        ));
+        let enabled = gtk::CheckButton::with_label("Include webcam in recording");
+        settings.bind_record_camera(&enabled, "active").build();
+        controls.append(&enabled);
+        controls.append(&camera);
+        let corners =
+            gtk::DropDown::from_strings(&["Top left", "Top right", "Bottom left", "Bottom right"]);
+        corners.set_tooltip_text(Some("Webcam corner"));
+        settings.bind_camera_corner(&corners, "selected").build();
+        controls.append(&corners);
+        let preview = gtk::Button::with_label("Preview camera");
+        preview.connect_clicked(clone!(
+            #[weak(rename_to = window)]
+            self,
+            move |_| {
+                if let Err(err) = window.preview_camera() {
+                    window.present_recording_error_dialog(&err);
+                }
+            }
+        ));
+        controls.append(&preview);
+        let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let copy = gtk::Button::with_label("Copy video");
+        copy.set_hexpand(true);
+        copy.connect_clicked(clone!(
+            #[weak(rename_to = window)]
+            self,
+            move |_| {
+                if let Some(file) = window.imp().last_file.borrow().clone() {
+                    window.imp().pending_copy.replace(Some(file));
+                    window.copy_pending_file();
+                }
+            }
+        ));
+        let open = gtk::Button::with_label("Open video");
+        open.set_hexpand(true);
+        open.connect_clicked(clone!(
+            #[weak(rename_to = window)]
+            self,
+            move |_| {
+                if let Some(file) = window.imp().last_file.borrow().clone() {
+                    Application::get()
+                        .activate_action("launch-uri", Some(&file.uri().to_variant()));
+                }
+            }
+        ));
+        buttons.append(&copy);
+        buttons.append(&open);
+        controls.append(&buttons);
+        self.imp().copy_status.set_wrap(true);
+        self.imp()
+            .copy_status
+            .set_label("Recordings are saved and copied automatically");
+        controls.append(&self.imp().copy_status);
+    }
+
+    fn preview_camera(&self) -> Result<()> {
+        use gst::prelude::*;
+        let pipeline = gst::Pipeline::new();
+        let source = crate::camera::source(&Application::get().settings().camera_device())?;
+        let sink = gst::ElementFactory::make("gtk4paintablesink").build()?;
+        pipeline.add_many([source.upcast_ref(), &sink])?;
+        source.link(&sink)?;
+        let picture =
+            gtk::Picture::for_paintable(&sink.property::<gtk::gdk::Paintable>("paintable"));
+        picture.set_size_request(320, 240);
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        let header = adw::HeaderBar::new();
+        content.append(&header);
+        content.append(&picture);
+        let status = gtk::Label::new(Some("Close this preview before recording"));
+        status.set_wrap(true);
+        content.append(&status);
+        let dialog = adw::Dialog::builder()
+            .title("Camera preview")
+            .child(&content)
+            .build();
+        let watch = pipeline.bus().unwrap().add_watch_local(move |_, message| {
+            if let gst::MessageView::Error(error) = message.view() {
+                status.set_label(&format!("Camera unavailable: {}", error.error()));
+            }
+            glib::ControlFlow::Continue
+        })?;
+        let watch = RefCell::new(Some(watch));
+        dialog.connect_closed(clone!(
+            #[strong]
+            pipeline,
+            move |_| {
+                let _ = pipeline.set_state(gst::State::Null);
+                watch.take();
+            }
+        ));
+        if let Err(error) = pipeline.set_state(gst::State::Playing) {
+            let _ = pipeline.set_state(gst::State::Null);
+            return Err(error.into());
+        }
+        dialog.present(Some(self));
+        Ok(())
     }
 
     /// Returns `true` if the window is busy with a recording.
@@ -406,6 +584,17 @@ impl Window {
 
         match res {
             Ok((recording_file, duration)) => {
+                self.imp().last_file.replace(Some(recording_file.clone()));
+                self.imp()
+                    .pending_copy
+                    .replace(Some(recording_file.clone()));
+                self.imp()
+                    .copy_status
+                    .set_label("Saved. Preparing clipboard…");
+                self.present();
+                if self.is_active() {
+                    self.copy_pending_file();
+                }
                 let duration = *duration;
                 glib::spawn_future_local(clone!(
                     #[strong]
@@ -541,8 +730,8 @@ impl Window {
         let imp = self.imp();
 
         match Application::get().settings().capture_mode() {
-            CaptureMode::MonitorWindow => imp.title.set_title(&gettext("Normal")),
-            CaptureMode::Selection => imp.title.set_title(&gettext("Selection")),
+            CaptureMode::MonitorWindow => imp.title.set_title(&gettext("Quickcast")),
+            CaptureMode::Selection => imp.title.set_title(&gettext("Quickcast · Region")),
         }
     }
 
@@ -625,5 +814,54 @@ impl Window {
         self.add_action(&settings.create_record_microphone_action());
         self.add_action(&settings.create_show_pointer_action());
         self.add_action(&settings.create_capture_mode_action());
+    }
+}
+
+#[cfg(test)]
+mod quickcast_tests {
+    use super::*;
+
+    #[gtk::test]
+    fn window_copies_file_formats_and_renders() {
+        gst::init().unwrap();
+        let resource = gio::Resource::load(crate::config::RESOURCES_FILE).unwrap();
+        gio::resources_register(&resource);
+        let app = Application::new();
+        app.register(None::<&gio::Cancellable>).unwrap();
+        app.activate();
+        let window = app.window();
+        let paintable = gtk::WidgetPaintable::new(Some(&window));
+        window.present();
+        let context = glib::MainContext::default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while std::time::Instant::now() < deadline {
+            while context.pending() {
+                context.iteration(false);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let file = gio::File::for_path("/tmp/Quickcast test clip.mp4");
+        window.imp().pending_copy.replace(Some(file));
+        window.copy_pending_file();
+        let formats = window.clipboard().formats();
+        assert!(formats.contains_type(gtk::gdk::FileList::static_type()));
+        assert!(formats.contain_mime_type("text/uri-list"));
+        assert!(formats.contain_mime_type("x-special/gnome-copied-files"));
+        assert!(window.imp().copy_status.label().contains("Video copied"));
+        if let Ok(directory) = std::env::var("QUICKCAST_TEST_DIR") {
+            let snapshot = gtk::Snapshot::new();
+            paintable.snapshot(
+                &snapshot,
+                f64::from(window.width()),
+                f64::from(window.height()),
+            );
+            let node = snapshot.to_node().expect("Window rendered no content");
+            let renderer = window.renderer().expect("Window has no renderer");
+            let texture = renderer.render_texture(&node, None);
+            texture
+                .save_to_png(std::path::Path::new(&directory).join("window.png"))
+                .unwrap();
+        }
+        window.destroy();
     }
 }

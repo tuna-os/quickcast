@@ -6,7 +6,8 @@
     <property name="height-request">-1</property>
     <property name="width-request">-1</property>
     <property name="resizable">False</property>
-    <property name="default-width">220</property>
+    <property name="hide-on-close">True</property>
+    <property name="default-width">360</property>
     <property name="default-height">230</property>
     <property name="focus-widget">start_record_button</property>
     <property name="content">
@@ -107,6 +108,12 @@
                             <property name="toggled-tooltip-text" translatable="yes">Hide Pointer</property>
                           </object>
                         </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkBox" id="quick_controls">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">8</property>
                       </object>
                     </child>
                     <child>
@@ -256,7 +263,7 @@
                     <property name="spacing">18</property>
                     <child>
                       <object class="GtkLabel">
-                        <property name="label" translatable="yes">Flushing…</property>
+                        <property name="label" translatable="yes">Saving recording…</property>
                         <property name="single-line-mode">True</property>
                         <style>
                           <class name="title-4"/>
@@ -300,7 +307,11 @@
         <attribute name="action">app.shortcuts</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_About Kooha</attribute>
+        <attribute name="label" translatable="yes">_Quit</attribute>
+        <attribute name="action">app.quit</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_About Quickcast</attribute>
         <attribute name="action">app.show-about</attribute>
       </item>
     </section>

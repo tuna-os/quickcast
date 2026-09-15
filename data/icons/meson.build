@@ -1,5 +1,6 @@
 install_data(
-  '@0@.svg'.format(application_id),
+  '@0@.svg'.format(base_id),
+  rename: '@0@.svg'.format(application_id),
   install_dir: iconsdir / 'hicolor' / 'scalable' / 'apps'
 )
 

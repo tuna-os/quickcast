@@ -23,15 +23,15 @@ supported:
     extension: mp4
     videoenc: >
       videoconvert chroma-mode=none dither=none matrix-mode=output-only n-threads=${N_THREADS} !
-      x264enc qp-max=17 speed-preset=ultrafast threads=${N_THREADS} !
+      x264enc pass=qual quantizer=24 speed-preset=veryfast tune=zerolatency threads=${N_THREADS} !
       capsfilter caps=video/x-h264,profile=baseline !
       queue !
       h264parse
     audioenc: >
       audioconvert !
-      lamemp3enc !
+      avenc_aac bitrate=128000 !
       queue !
-      mpegaudioparse
+      aacparse
     muxer: mp4mux fragment-duration=500 fragment-mode=first-moov-then-finalise
 
   - id: matroska-h264
@@ -39,7 +39,7 @@ supported:
     extension: mkv
     videoenc: >
       videoconvert chroma-mode=none dither=none matrix-mode=output-only n-threads=${N_THREADS} !
-      x264enc qp-max=17 speed-preset=ultrafast threads=${N_THREADS} !
+      x264enc pass=qual quantizer=24 speed-preset=veryfast tune=zerolatency threads=${N_THREADS} !
       capsfilter caps=video/x-h264,profile=baseline !
       queue !
       h264parse
@@ -95,7 +95,7 @@ experimental:
       h264parse
     audioenc: >
       audioconvert !
-      lamemp3enc !
+      avenc_aac bitrate=128000 !
       queue !
-      mpegaudioparse
+      aacparse
     muxer: mp4mux fragment-duration=500 fragment-mode=first-moov-then-finalise

@@ -1,7 +1,7 @@
 project(
   'kooha',
   'rust',
-  version: '2.3.2',
+  version: '0.1.0',
   license: 'GPL-3.0-or-later',
   meson_version: '>= 0.59',
 )
@@ -44,11 +44,11 @@ if get_option('profile') == 'development'
   else
     version_suffix = '-@0@'.format(vcs_tag)
   endif
-  application_id = '@0@.@1@'.format(base_id, profile)
+  application_id = 'org.tunaos.Quickcast'
 else
   profile = ''
   version_suffix = ''
-  application_id = base_id
+  application_id = 'org.tunaos.Quickcast'
 endif
 
 meson.add_dist_script(

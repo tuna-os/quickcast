@@ -1,51 +1,28 @@
+name: CI
 on:
   push:
     branches: [main]
   pull_request:
-
-name: CI
-
+permissions:
+  contents: read
 jobs:
-  checks:
-    name: Checks
-    runs-on: ubuntu-22.04
+  build-and-test:
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
-      # FIXME uncomment when we don't --skip ui_files anymore
-      # - name: Download dependencies
-      #   run: sudo apt -y install libgtk-4-dev
-      - name: Run checks.py
-        run: curl https://raw.githubusercontent.com/SeaDve/scripts/main/checks.py | python - --verbose --skip rustfmt typos ui_files
-
-  rustfmt:
-    name: Rustfmt
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v3
-      - name: Create blank versions of configured file
-        run: echo -e "" >> src/config.rs
-      - name: Run cargo fmt
-        run: cargo fmt --all -- --check
-
-  typos:
-    name: Typos
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v3
-      - name: Check for typos
-        uses: crate-ci/typos@master
-
-  flatpak:
-    name: Flatpak
-    runs-on: ubuntu-22.04
-    container:
-      image: bilelmoussaoui/flatpak-github-actions:gnome-nightly
-      options: --privileged
-    steps:
-      - uses: actions/checkout@v3
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      - uses: actions/checkout@v7
+      - name: Install build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak xvfb
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
+      - name: Build installable Flatpak
+        run: ./scripts/build-local.sh
+      - name: Test recording, decoded video, clipboard and UI
+        run: ./scripts/test-local.sh
+      - uses: actions/upload-artifact@v7
         with:
-          bundle: kooha.flatpak
-          manifest-path: build-aux/io.github.seadve.Kooha.Devel.json
-          run-tests: true
-          cache-key: flatpak-builder-${{ github.sha }}
+          name: Quickcast
+          path: |
+            Quickcast.flatpak
+            test-artifacts/

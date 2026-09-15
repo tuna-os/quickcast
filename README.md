@@ -1,149 +1,97 @@
-<h1 align="center">
-  <img alt="Kooha" src="data/icons/io.github.seadve.Kooha.svg" width="192" height="192"/>
-  <br>
-  Kooha
-</h1>
+# Quickcast
 
-<p align="center">
-  <strong>Elegantly record your screen</strong>
-</p>
+A small GNOME screen recorder for quick explanations: record your screen with
+microphone audio and an optional webcam in the corner, then paste the finished
+video as an attachment.
 
-<p align="center">
-  <a href="https://flathub.org/apps/details/io.github.seadve.Kooha">
-    <img alt="Download on Flathub" src="https://flathub.org/api/badge?svg&locale=en&light" width="200"/>
-  </a>
-  <br>
-  <a href="https://seadve.github.io/donate/">
-    <img alt="Donate" src="https://img.shields.io/badge/%E2%9D%A4-donate-yellow?style=for-the-badge"/>
-  </a>
-</p>
+Quickcast is a GPL-3.0-or-later fork of [Kooha](https://github.com/SeaDve/Kooha).
+Kooha's authors and contributors built the capture, audio, region selection and
+GNOME application foundation. This fork adds webcam composition, automatic file
+copying, a compact MP4 preset and TunaOS packaging.
 
-<br>
+## Install
 
-<p align="center">
-  <a href="https://hosted.weblate.org/engage/seadve/">
-    <img alt="Translation status" src="https://hosted.weblate.org/widgets/seadve/-/kooha/svg-badge.svg"/>
-  </a>
-  <a href="https://flathub.org/apps/details/io.github.seadve.Kooha">
-    <img alt="Flathub downloads" src="https://img.shields.io/badge/dynamic/json?color=informational&label=downloads&logo=flathub&logoColor=white&query=%24.installs_total&url=https%3A%2F%2Fflathub.org%2Fapi%2Fv2%2Fstats%2Fio.github.seadve.Kooha"/>
-  </a>
-  <a href="https://github.com/SeaDve/Kooha/actions/workflows/ci.yml">
-    <img alt="CI status" src="https://github.com/SeaDve/Kooha/actions/workflows/ci.yml/badge.svg"/>
-  </a>
-</p>
-
-<p align="center">
-  <img src="data/screenshots/preview.png" alt="Preview"/>
-</p>
-
-Capture your screen in an intuitive and straightforward way without distractions.
-
-Kooha is a simple screen recorder with a minimal interface. You can simply click
-the record button without having to configure a bunch of settings.
-
-The main features of Kooha include the following:
-* 🎙️ Record microphone, desktop audio, or both at the same time
-* 📼 Support for WebM, MP4, GIF, and Matroska formats
-* 🖥️ Select a monitor or a portion of the screen to record
-* 🛠️ Configurable saving location, pointer visibility, frame rate, and delay
-* 🚀 Experimental hardware-accelerated encoding
-
-## 😕 It Doesn't Work
-
-There are many possibilities on why it may not be working. You may not have
-the runtime requirements mentioned below installed, or your distro doesn't
-support it. For troubleshooting purposes, the [screencast compatibility page](https://github.com/emersion/xdg-desktop-portal-wlr/wiki/Screencast-Compatibility)
-of `xdg-desktop-portal-wlr` wiki may help determine if your distro
-has support for it out of the box. If it does, but it still doesn't work, you
-can also check for the [troubleshooting checklist](https://github.com/emersion/xdg-desktop-portal-wlr/wiki/%22It-doesn't-work%22-Troubleshooting-Checklist).
-
-## ⚙️ Experimental Features
-
-These features are disabled by default due to stability issues and possible
-performance degradation. However, they can be enabled manually by running Kooha
-with `KOOHA_EXPERIMENTAL` env var set to `all` (e.g., `KOOHA_EXPERIMENTAL=all flatpak run io.github.seadve.Kooha`), or individually, by setting
-`KOOHA_EXPERIMENTAL` to the following keys (e.g., `KOOHA_EXPERIMENTAL=experimental-formats,window-recording`):
-
-| Feature                  | Description                                                             | Issues                    |
-| ------------------------ | ----------------------------------------------------------------------- | ------------------------- |
-| `all`                    | Enables all experimental features                                       | -                         |
-| `experimental-formats`   | Enables other codecs (e.g., hardware-accelerate encoders, VP9, and AV1) | Stability                 |
-| `multiple-video-sources` | Enables recording multiple monitor or windows                           | Stability and performance |
-| `window-recording`       | Enables recording a specific window                                     | Flickering                |
-
-## 📋 Runtime Requirements
-
-* pipewire
-* gstreamer-plugin-pipewire
-* xdg-desktop-portal
-* xdg-desktop-portal-(e.g., gtk, kde, wlr)
-
-## 🏗️ Building from source
-
-### GNOME Builder
-
-GNOME Builder is the environment used for developing this application.
-It can use Flatpak manifests to create a consistent building and running
-environment cross-distro. Thus, it is highly recommended you use it.
-
-1. Download [GNOME Builder](https://flathub.org/apps/details/org.gnome.Builder).
-2. In Builder, click the "Clone Repository" button at the bottom, using `https://github.com/SeaDve/Kooha.git` as the URL.
-3. Click the build button at the top once the project is loaded.
-
-### Meson
-
-#### Prerequisites
-
-The following packages are required to build Kooha:
-
-* meson
-* ninja
-* appstreamcli (for checks)
-* cargo
-* x264 (for MP4)
-* gstreamer
-* gstreamer-plugins-base
-* gstreamer-plugins-ugly (for MP4)
-* gstreamer-plugins-bad (for VA encoders)
-* glib2
-* gtk4
-* libadwaita
-
-#### Build Instruction
-
-```shell
-git clone https://github.com/SeaDve/Kooha.git
-cd Kooha
-meson _build --prefix=/usr/local
-ninja -C _build install
+```sh
+flatpak remote-add --user --if-not-exists tuna-os https://tunaos.org/flatpak/tuna-os.flatpakrepo
+flatpak install --user tuna-os org.tunaos.Quickcast
+flatpak run --user org.tunaos.Quickcast
 ```
 
-## 📦 Third-Party Packages
+The initial release targets x86_64 and the GNOME 50 Flatpak runtime.
+Alternatively, install the `.flatpak` bundle from this repository's releases.
 
-Unlike Flatpak, take note that these packages are not officially supported by the developer.
+## Record and paste
 
-### Repology
+1. Choose a monitor/window or a screen region.
+2. Toggle microphone and desktop audio. Microphone is enabled by default;
+   desktop audio is optional.
+3. Enable **Include webcam in recording**, select a camera and corner, and use
+   **Preview camera** to check the picture. Close the preview to release the
+   camera before recording.
+4. Press **Record**. Press **Stop** when finished.
+5. The completion window appears and copies the video file. Paste in an app
+   that accepts file attachments. **Copy video** copies the latest recording again;
+   **Open video** plays it.
 
-You can also check out other third-party packages on [Repology](https://repology.org/project/kooha/versions).
+Files remain in `~/Videos/Quickcast` unless you change the destination in
+Preferences. No upload, account or cloud storage is involved. Closing the window
+keeps the app running to serve the clipboard; choose **Quit** or Ctrl+Q to exit.
 
-## 🙌 Help translate Kooha
+### Global shortcut
 
-You can help Kooha translate into your native language. If you find any typos
-or think you can improve a translation, you can use the [Weblate](https://hosted.weblate.org/engage/seadve/) platform.
+In GNOME Settings → Keyboard → Custom Shortcuts, use:
 
-## ☕ Support me and the project
+```sh
+gapplication action org.tunaos.Quickcast toggle-record
+```
 
-Kooha is free and will always be for everyone to use. If you like the project and
-would like to support it, you may donate [here](https://seadve.github.io/donate/).
+The same command starts and stops recording. `scripts/install-shortcut.py` installs
+Super+Shift+R if it is free, preserving your existing custom shortcuts.
 
-## 💝 Acknowledgment
+## Encoding and clipboard behavior
 
-I would like to express my gratitude to the [contributors](https://github.com/SeaDve/Kooha/graphs/contributors)
-and [translators](https://hosted.weblate.org/engage/seadve/) of the project.
+- Default: H.264 + AAC in MP4, 30 fps, software x264 quality 24 / veryfast.
+- The output fits within 1920×1080 without upscaling. Webcam composition happens
+  after region cropping, so it is included in window and region recordings.
+- The first version has a rectangular 4:3 overlay, four corner positions, and
+  camera preview. A circular bubble, live overlay dragging and automatic
+  hardware encoder selection are not implemented.
+- Video is encoded during recording. Copying occurs only after successful
+  end-of-stream finalization, never after cancellation or an encoding error.
+- GTK file-list, URI-list and GNOME copied-file clipboard formats are offered.
+  Native apps and browser attachment fields differ in which formats they accept.
+  GNOME Wayland may require focusing the completion window before copying can
+  finish; the pending copy is retried when that window becomes active.
+- The camera uses V4L2 (raw or MJPEG), so the Flatpak needs device access. Devices
+  are enumerated when the app window is created; restart after attaching a camera.
+- Screen permissions use the desktop portal. Previously granted capture sources
+  are remembered where the portal permits it. No capture permission is bypassed.
 
-I would also like to thank the open-source software projects, libraries, and APIs that were
-used in developing this app, such as GStreamer, GTK, LibAdwaita, and many others, for making Kooha possible.
+## Build and test
 
-I would also like to acknowledge [RecApp](https://github.com/amikha1lov/RecApp), which greatly inspired the creation of Kooha,
-as well as [GNOME Screenshot](https://gitlab.gnome.org/GNOME/gnome-screenshot), which served as a reference for Kooha's icon
-design.
+Install the GNOME 50 SDK and Rust extension for your user:
+
+```sh
+flatpak install --user flathub org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
+./scripts/build-local.sh
+flatpak install --user --reinstall ./Quickcast.flatpak
+./scripts/test-local.sh
+```
+
+The build script produces `Quickcast.flatpak`. The Flatpak Builder manifest is
+`org.tunaos.Quickcast.json`. CI builds that manifest and runs the Meson tests,
+including a synthetic screen/webcam/audio MP4 recording and a GTK clipboard/UI
+check. Local tests use Xvfb and a private D-Bus session, avoiding the desktop's
+clipboard. `scripts/verify-video.py` decodes the synthetic result and checks its
+codecs, duration and overlay pixels.
+
+Real GNOME portal selection, physical audio/video synchronization, and pasting
+into individual chat/browser apps still require interactive hardware testing.
+
+## Publishing
+
+Tag releases as `v0.1.0`, etc., or dispatch **Publish Quickcast Flatpak**. The
+workflow calls the shared `tuna-os/.github` publisher, pushes
+`ghcr.io/tuna-os/quickcast`, and updates the served TunaOS Flatpak index. It inherits
+`FLATPAK_INDEX_TOKEN` from the organization/repository; that credential needs access
+to the central index repository. CI on `main` builds and tests without publishing.

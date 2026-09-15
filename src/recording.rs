@@ -220,6 +220,9 @@ impl Recording {
             pipeline_builder.record_microphone(settings.record_microphone());
         }
 
+        if settings.record_camera() {
+            pipeline_builder.camera(settings.camera_device(), settings.camera_corner());
+        }
         // Build pipeline
         let pipeline = pipeline_builder.build().with_context(|| {
             ContextWithHelp::new(

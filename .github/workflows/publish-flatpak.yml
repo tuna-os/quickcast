@@ -1,0 +1,24 @@
+name: Publish Quickcast Flatpak
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to GHCR and the TunaOS Flatpak remote
+        type: boolean
+        default: true
+permissions:
+  contents: write
+  packages: write
+jobs:
+  publish:
+    uses: tuna-os/.github/.github/workflows/publish-flatpak.yml@main
+    with:
+      app-id: org.tunaos.Quickcast
+      manifest-path: org.tunaos.Quickcast.json
+      repo-name: tuna-os/quickcast
+      archs: '["x86_64"]'
+      attach-bundles: true
+      publish: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
+    secrets: inherit

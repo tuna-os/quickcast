@@ -234,7 +234,18 @@ impl Application {
                 about::present_dialog(&obj.window());
             })
             .build();
+        let toggle_record_action = gio::ActionEntry::builder("toggle-record")
+            .activate(|obj: &Self, _, _| {
+                let window = obj.window();
+                if !window.is_busy() {
+                    window.present();
+                }
+                let _ =
+                    gtk::prelude::WidgetExt::activate_action(&window, "win.toggle-record", None);
+            })
+            .build();
         self.add_action_entries([
+            toggle_record_action,
             launch_uri_action,
             show_in_files_action,
             quit_action,

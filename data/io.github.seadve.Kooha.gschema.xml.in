@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <schemalist>
-  <schema path="/io/github/seadve/Kooha/" id="@app-id@" gettext-domain="@gettext-package@">
+  <schema path="/org/tunaos/Quickcast/" id="@app-id@" gettext-domain="@gettext-package@">
     <key type="s" name="capture-mode">
       <choices>
         <choice value="monitor-window"/>
@@ -9,11 +9,14 @@
       <default>"monitor-window"</default>
     </key>
     <key type="b" name="record-desktop-audio">
-      <default>true</default>
-    </key>
-    <key type="b" name="record-microphone">
       <default>false</default>
     </key>
+    <key type="b" name="record-microphone">
+      <default>true</default>
+    </key>
+    <key type="s" name="camera-device"><default>""</default></key>
+    <key type="b" name="record-camera"><default>false</default></key>
+    <key type="u" name="camera-corner"><range min="0" max="3"/><default>3</default></key>
     <key type="b" name="show-pointer">
       <default>true</default>
     </key>
@@ -24,7 +27,7 @@
       <default>b""</default>
     </key>
     <key type="s" name="profile-id">
-      <default>"webm-vp8"</default>
+      <default>"mp4"</default>
     </key>
     <key type="(ii)" name="framerate">
       <default>(30, 1)</default>
