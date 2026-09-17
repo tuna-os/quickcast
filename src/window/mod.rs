@@ -864,7 +864,11 @@ mod quickcast_tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        let file = gio::File::for_path("/tmp/Quickcast test clip.mp4");
+        let test_dir = std::env::var("QUICKCAST_TEST_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let file_path = test_dir.join("Quickcast test clip.mp4");
+        let file = gio::File::for_path(file_path);
         window.imp().pending_copy.replace(Some(file.clone()));
         window.copy_pending_file();
         let formats = window.clipboard().formats();
