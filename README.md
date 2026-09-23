@@ -92,9 +92,8 @@ Flatpak does not install host Shell extensions automatically.
 Install the GNOME 50 SDK and Rust extension for your user:
 
 ```sh
-flatpak install --user flathub org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
+flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
 ./scripts/build-local.sh
-flatpak install --user --reinstall ./Quickcast.flatpak
 ./scripts/test-local.sh
 ```
 
