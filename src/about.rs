@@ -22,10 +22,10 @@ pub fn present_dialog(parent: &impl IsA<gtk::Widget>) {
     let dialog = adw::AboutDialog::builder()
         .application_icon(APP_ID)
         .application_name(gettext("Quickcast"))
-        .comments("A quick recording and sharing app derived from Kooha.")
-        .developer_name("Quickcast contributors; based on Kooha by Dave Patrick Caberto")
+        .comments("A quick recording and sharing app from TunaOS.")
+        .developer_name("TunaOS contributors; derived from Kooha by Dave Patrick Caberto")
         .version(VERSION)
-        .copyright("© 2024 Dave Patrick Caberto")
+        .copyright("© 2024 Dave Patrick Caberto; © 2024 TunaOS contributors")
         .license_type(gtk::License::Gpl30)
         .developers(vec![
             "Dave Patrick Caberto",
@@ -35,13 +35,13 @@ pub fn present_dialog(parent: &impl IsA<gtk::Widget>) {
         // Translators: Replace "translator-credits" with your names. Put a comma between.
         .translator_credits(gettext("translator-credits"))
         .debug_info(debug_info())
-        .debug_info_filename("kooha-debug-info")
+        .debug_info_filename("quickcast-debug-info")
         .release_notes_version("2.3.0")
         .release_notes(release_notes())
         .build();
 
     dialog.add_link(&gettext("Donate"), "https://seadve.github.io/donate/");
-    dialog.add_link(&gettext("GitHub"), "https://github.com/SeaDve/Kooha");
+    dialog.add_link(&gettext("GitHub"), "https://github.com/tuna-os/quickcast");
     dialog.add_link(
         &gettext("Translate"),
         "https://hosted.weblate.org/projects/seadve/kooha",

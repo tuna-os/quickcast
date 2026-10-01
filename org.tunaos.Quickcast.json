@@ -6,7 +6,7 @@
   "sdk-extensions": [
     "org.freedesktop.Sdk.Extension.rust-stable"
   ],
-  "command": "kooha",
+  "command": "quickcast",
   "tags": [
     "latest"
   ],
@@ -17,7 +17,7 @@
     "--socket=pulseaudio",
     "--device=all",
     "--filesystem=xdg-videos",
-    "--env=KOOHA_EXPERIMENTAL=window-recording",
+    "--env=QUICKCAST_EXPERIMENTAL=window-recording",
     "--filesystem=/run/udev:ro"
   ],
   "build-options": {

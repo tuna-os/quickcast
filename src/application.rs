@@ -26,7 +26,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for Application {
-        const NAME: &'static str = "KoohaApplication";
+        const NAME: &'static str = "QuickcastApplication";
         type Type = super::Application;
         type ParentType = adw::Application;
     }
@@ -74,7 +74,7 @@ impl Application {
     pub fn new() -> Self {
         glib::Object::builder()
             .property("application-id", APP_ID)
-            .property("resource-base-path", "/io/github/seadve/Kooha/")
+            .property("resource-base-path", "/org/tunaos/Quickcast/")
             .build()
     }
 
