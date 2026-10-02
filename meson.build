@@ -1,5 +1,5 @@
 project(
-  'kooha',
+  'quickcast',
   'rust',
   version: '0.1.0',
   license: 'GPL-3.0-or-later',

@@ -35,7 +35,7 @@ pub fn present_dialog(parent: &impl IsA<gtk::Widget>) {
         // Translators: Replace "translator-credits" with your names. Put a comma between.
         .translator_credits(gettext("translator-credits"))
         .debug_info(debug_info())
-        .debug_info_filename("kooha-debug-info")
+        .debug_info_filename("quickcast-debug-info")
         .release_notes_version("2.3.0")
         .release_notes(release_notes())
         .build();
