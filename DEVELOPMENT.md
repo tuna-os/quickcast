@@ -4,8 +4,8 @@ How to set up, build, test, and develop Quickcast locally.
 
 ## System requirements
 
-- Rust 1.70 or newer (provided by rustup or your distribution)
-- Meson 1.4.0 or newer
+- Rust 1.90 or newer (provided by rustup or your distribution)
+- Meson 0.59 or newer
 - GTK 4.12 or newer with development headers
 - GLib 2.78 or newer with development headers
 - libadwaita 1.5 or newer

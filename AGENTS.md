@@ -114,7 +114,7 @@ Local manual testing on a real GNOME session is required before claiming a captu
 | libadwaita | ≥1.5 | GNOME design system |
 | FFmpeg | latest stable | Video encoding |
 | Pipewire/PulseAudio | latest | Audio capture |
-| Rust | 1.70+ | Language toolchain |
+| Rust | 1.90+ | Language toolchain |
 
 No Cargo.toml pinning other than MSRV (Minimum Supported Rust Version) of 1.70, set in `Cargo.toml`.
 
