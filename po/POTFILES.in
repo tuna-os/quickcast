@@ -1,6 +1,6 @@
-data/io.github.seadve.Kooha.desktop.in.in
-data/io.github.seadve.Kooha.gschema.xml.in
-data/io.github.seadve.Kooha.metainfo.xml.in.in
+data/org.tunaos.Quickcast.desktop.in.in
+data/org.tunaos.Quickcast.gschema.xml.in
+data/org.tunaos.Quickcast.metainfo.xml.in.in
 data/resources/ui/area_selector.ui
 data/resources/ui/preferences_dialog.ui
 data/resources/ui/shortcuts.ui
