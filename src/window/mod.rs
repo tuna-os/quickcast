@@ -1,5 +1,6 @@
 mod progress_icon;
 mod toggle_button;
+pub mod recording_controller;
 
 use adw::{prelude::*, subclass::prelude::*};
 use anyhow::{Error, Result};
@@ -11,7 +12,7 @@ use gtk::{
 
 use std::cell::RefCell;
 
-use self::{progress_icon::ProgressIcon, toggle_button::ToggleButton};
+use self::{progress_icon::ProgressIcon, toggle_button::ToggleButton, recording_controller::RecordingController};
 use crate::{
     Application,
     cancelled::Cancelled,
