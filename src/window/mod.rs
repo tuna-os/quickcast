@@ -12,7 +12,8 @@ use gtk::{
 
 use std::cell::RefCell;
 
-use self::{progress_icon::ProgressIcon, toggle_button::ToggleButton, recording_controller::RecordingController};
+use self::{progress_icon::ProgressIcon, toggle_button::ToggleButton};
+// recording_controller is publicly exported but not used directly in this file
 use crate::{
     Application,
     cancelled::Cancelled,
