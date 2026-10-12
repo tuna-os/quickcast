@@ -34,6 +34,36 @@ pub struct SelectAreaData {
     pub stream_size: (i32, i32),
 }
 
+impl SelectAreaData {
+    /// Converts this UI selection data to a capture region.
+    ///
+    /// This decouples the pipeline from UI-specific selection geometry.
+    /// The returned region represents the actual pixels in the stream that should be captured.
+    pub fn to_capture_region(&self) -> crate::capture::CaptureRegion {
+        let (stream_width, stream_height) = self.stream_size;
+        let scale_factor_h = stream_width as f32 / self.paintable_rect.width();
+        let scale_factor_v = stream_height as f32 / self.paintable_rect.height();
+
+        // Both paintable and selection position are relative to widget coordinates.
+        // To get absolute position, subtract paintable rect's position from selection rect.
+        let selection_rect = self.selection.rect();
+        let selection_rect_scaled = Rect::new(
+            selection_rect.x() - self.paintable_rect.x(),
+            selection_rect.y() - self.paintable_rect.y(),
+            selection_rect.width(),
+            selection_rect.height(),
+        )
+        .scale(scale_factor_h, scale_factor_v);
+
+        let x = selection_rect_scaled.x().round() as i32;
+        let y = selection_rect_scaled.y().round() as i32;
+        let width = selection_rect_scaled.width().round() as u32;
+        let height = selection_rect_scaled.height().round() as u32;
+
+        crate::capture::CaptureRegion::new(x, y, width, height)
+    }
+}
+
 /// Context to identify if the selection is still valid.
 #[derive(Debug, Clone, PartialEq, glib::Variant)]
 pub struct SelectionContext {

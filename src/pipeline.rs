@@ -6,6 +6,7 @@ use std::{os::unix::io::RawFd, path::PathBuf};
 
 use crate::{
     area_selector::SelectAreaData,
+    capture::CaptureRegion,
     device::{self, DeviceClass},
     profile::Profile,
     screencast_portal::Stream,
@@ -24,7 +25,8 @@ pub struct PipelineBuilder {
     record_desktop_audio: bool,
     record_microphone: bool,
     camera: Option<(crate::bubble::CameraFeed, u32)>,
-    select_area_data: Option<SelectAreaData>,
+    select_area_data: Option<CaptureRegion>,
+    stream_size: Option<(i32, i32)>,
 }
 
 impl PipelineBuilder {
@@ -45,6 +47,7 @@ impl PipelineBuilder {
             record_microphone: false,
             camera: None,
             select_area_data: None,
+            stream_size: None,
         }
     }
 
@@ -63,8 +66,9 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn select_area_data(&mut self, data: SelectAreaData) -> &mut Self {
-        self.select_area_data = Some(data);
+    pub fn select_area_data(&mut self, data: crate::area_selector::SelectAreaData) -> &mut Self {
+        self.stream_size = Some(data.stream_size);
+        self.select_area_data = Some(data.to_capture_region());
         self
     }
 
@@ -108,11 +112,12 @@ impl PipelineBuilder {
 
         if let Some(ref data) = self.select_area_data {
             let videoscale = gst::ElementFactory::make("videoscale").build()?;
-            let videocrop = make_videocrop(data)?;
+            let stream_size = self.stream_size.context("stream_size must be set when select_area_data is used")?;
+            let videocrop = make_videocrop(data, stream_size)?;
             pipeline.add_many([&videoscale, &videocrop])?;
 
             // x264enc requires even resolution.
-            let (stream_width, stream_height) = data.stream_size;
+            let (stream_width, stream_height) = stream_size;
             let videoscale_caps = gst::Caps::builder("video/x-raw")
                 .field("width", round_to_even(stream_width))
                 .field("height", round_to_even(stream_height))
@@ -202,61 +207,25 @@ fn make_videoflip() -> Result<gst::Element> {
     Ok(videoflip)
 }
 
-/// Create a videocrop element that computes the crop from the given coordinates
-/// and size.
-fn make_videocrop(data: &SelectAreaData) -> Result<gst::Element> {
-    let SelectAreaData {
-        selection,
-        paintable_rect,
-        stream_size,
-    } = data;
-
+/// Create a videocrop element that computes the crop from the given capture region.
+fn make_videocrop(region: &CaptureRegion, stream_size: (i32, i32)) -> Result<gst::Element> {
     let (stream_width, stream_height) = stream_size;
-    let scale_factor_h = *stream_width as f32 / paintable_rect.width();
-    let scale_factor_v = *stream_height as f32 / paintable_rect.height();
 
-    if scale_factor_h != scale_factor_v {
-        tracing::warn!(
-            scale_factor_h,
-            scale_factor_v,
-            "Scale factors of horizontal and vertical are unequal"
-        );
-    }
-
-    // Both paintable and selection position are relative to the widget coordinates.
-    // To get the absolute position and so correct crop values, subtract the paintable
-    // rect's position from the selection rect.
-    let old_selection_rect = selection.rect();
-    let selection_rect_scaled = Rect::new(
-        old_selection_rect.x() - paintable_rect.x(),
-        old_selection_rect.y() - paintable_rect.y(),
-        old_selection_rect.width(),
-        old_selection_rect.height(),
-    )
-    .scale(scale_factor_h, scale_factor_v);
-
-    let raw_top_crop = selection_rect_scaled.y();
-    let raw_left_crop = selection_rect_scaled.x();
-    let raw_right_crop =
-        *stream_width as f32 - (selection_rect_scaled.width() + selection_rect_scaled.x());
-    let raw_bottom_crop =
-        *stream_height as f32 - (selection_rect_scaled.height() + selection_rect_scaled.y());
-
-    tracing::debug!(raw_top_crop, raw_left_crop, raw_right_crop, raw_bottom_crop);
-
-    let top_crop = round_to_even_f32(raw_top_crop).clamp(0, *stream_height);
-    let left_crop = round_to_even_f32(raw_left_crop).clamp(0, *stream_width);
-    let right_crop = round_to_even_f32(raw_right_crop).clamp(0, *stream_width);
-    let bottom_crop = round_to_even_f32(raw_bottom_crop).clamp(0, *stream_height);
+    // The capture region already contains the coordinates within the stream.
+    // Compute what to crop out (the parts we don't want).
+    let top_crop = region.y.max(0);
+    let left_crop = region.x.max(0);
+    let right_crop = ((stream_width - (region.x + region.width as i32)).max(0)) as i32;
+    let bottom_crop = ((stream_height - (region.y + region.height as i32)).max(0)) as i32;
 
     tracing::debug!(top_crop, left_crop, right_crop, bottom_crop);
 
     // x264enc requires even resolution.
     let crop = gst::ElementFactory::make("videocrop")
-        .property("top", top_crop)
-        .property("left", left_crop)
-        .property("right", right_crop)
-        .property("bottom", bottom_crop)
+        .property("top", round_to_even(top_crop))
+        .property("left", round_to_even(left_crop))
+        .property("right", round_to_even(right_crop))
+        .property("bottom", round_to_even(bottom_crop))
         .build()?;
     Ok(crop)
 }
