@@ -57,27 +57,32 @@ impl RecordingController {
     /// ```ignore
     /// pub async fn start_recording(&mut self) -> Result<()> { ... }
     /// ```
-    pub async fn _start_recording(&mut self) -> Result<()> {
+    #[allow(dead_code)]
+    pub fn _start_recording(&self) -> Result<()> {
         Ok(())
     }
 
     /// Pause the active recording.
-    pub fn toggle_pause(&mut self) -> Result<()> {
+    #[allow(dead_code)]
+    pub fn toggle_pause(&self) -> Result<()> {
         Ok(())
     }
 
     /// Cancel the active recording.
-    pub fn cancel_record(&mut self) {
+    #[allow(dead_code)]
+    pub fn cancel_record(&self) {
         // Phase 1: placeholder
     }
 
     /// Copy the most recent recording to clipboard.
-    pub fn copy_to_clipboard(&self) -> Result<()> {
-        Ok(())
+    #[allow(dead_code)]
+    pub fn copy_to_clipboard(&self) {
+        // Phase 1: placeholder
     }
 
     /// Update session inhibitor (prevent sleep during recording).
-    fn update_inhibit(&mut self) {
+    #[allow(dead_code)]
+    fn update_inhibit(&self) {
         // Phase 1: placeholder
     }
 }
