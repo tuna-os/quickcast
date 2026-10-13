@@ -26,7 +26,7 @@ use crate::{
     i18n::gettext_f,
     pipeline::PipelineBuilder,
     screencast_portal::{
-        CursorMode, PersistMode, Proxy, Session, SourceType, Stream, WindowIdentifier,
+        CursorMode, PersistMode, Proxy, Session, Stream, WindowIdentifier,
     },
     settings::{CaptureMode, Settings},
     timer::Timer,
@@ -172,9 +172,9 @@ impl Recording {
                 CursorMode::HIDDEN
             },
             if Feature::WindowRecording.is_enabled() {
-                SourceType::MONITOR | SourceType::WINDOW
+                screencast_portal::SourceType::MONITOR | screencast_portal::SourceType::WINDOW
             } else {
-                SourceType::MONITOR
+                screencast_portal::SourceType::MONITOR
             },
             Feature::MultipleVideoSources.is_enabled(),
             Some(&restore_token),
@@ -226,7 +226,7 @@ impl Recording {
         if settings.record_camera()
             && streams
                 .iter()
-                .any(|s| s.source_type() == Some(SourceType::WINDOW))
+                .any(|s| s.source_type() == Some(screencast_portal::SourceType::WINDOW))
         {
             pipeline_builder.camera(
                 Application::get().window().camera_feed()?,
@@ -622,7 +622,7 @@ impl Recording {
 
 async fn new_screencast_session(
     cursor_mode: CursorMode,
-    source_type: SourceType,
+    source_type: screencast_portal::SourceType,
     is_multiple_sources: bool,
     restore_token: Option<&str>,
     persist_mode: PersistMode,
