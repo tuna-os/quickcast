@@ -3,7 +3,7 @@
 /// This module provides domain-level types for screen capture, hiding D-Bus and
 /// XDG Desktop Portal implementation details from callers.
 
-use crate::screencast_portal::{self, SourceType};
+use crate::screencast_portal;
 
 /// Represents a rectangular region on the screen for capture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,11 +56,11 @@ pub enum CaptureSource {
 
 impl CaptureSource {
     /// Converts to the portal-level source type for negotiation.
-    pub(crate) fn to_portal_source_type(&self) -> SourceType {
+    pub(crate) fn to_portal_source_type(&self) -> screencast_portal::SourceType {
         match self {
-            Self::Monitor(_) => SourceType::MONITOR,
-            Self::Window(_) => SourceType::WINDOW,
-            Self::Region(_) => SourceType::VIRTUAL,
+            Self::Monitor(_) => screencast_portal::SourceType::MONITOR,
+            Self::Window(_) => screencast_portal::SourceType::WINDOW,
+            Self::Region(_) => screencast_portal::SourceType::VIRTUAL,
         }
     }
 }
@@ -119,16 +119,16 @@ mod tests {
     fn test_capture_source_portal_types() {
         assert_eq!(
             CaptureSource::Monitor(0).to_portal_source_type(),
-            SourceType::MONITOR
+            screencast_portal::SourceType::MONITOR
         );
         assert_eq!(
             CaptureSource::Window(0).to_portal_source_type(),
-            SourceType::WINDOW
+            screencast_portal::SourceType::WINDOW
         );
         assert_eq!(
             CaptureSource::Region(CaptureRegion::new(0, 0, 100, 100))
                 .to_portal_source_type(),
-            SourceType::VIRTUAL
+            screencast_portal::SourceType::VIRTUAL
         );
     }
 }
