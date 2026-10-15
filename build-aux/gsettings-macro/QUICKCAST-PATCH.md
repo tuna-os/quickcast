@@ -4,3 +4,7 @@ quick-xml from 0.39 to 0.41 to address the XML parser advisories reported by the
 release audit. The macro parses this repository's GSettings schema at build time.
 The original LICENSE and README are retained. Remove this patch when an upstream
 release supports the fixed parser.
+
+Tracked in https://github.com/tuna-os/quickcast/issues/63 — check that issue
+(or crates.io for a gsettings-macro release depending on quick-xml >= 0.41)
+before assuming this patch is still needed.
