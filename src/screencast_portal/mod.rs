@@ -164,7 +164,7 @@ impl Session {
         let streams = response.get_flatten("streams")?;
         let restore_token = response.get("restore_token")?;
 
-        tracing::trace!(stream_count = streams.len(), has_restore_token = restore_token.is_some(), "Started screencast session");
+        tracing::trace!(has_restore_token = restore_token.is_some(), "Started screencast session");
 
         Ok((streams, restore_token))
     }
