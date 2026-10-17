@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use gtk::{glib::clone, subclass::prelude::*};
+use gtk::{glib::{self, clone}, subclass::prelude::*};
 
 use super::{Recording, RecordingState};
 use crate::timer::Timer;

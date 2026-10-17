@@ -12,7 +12,7 @@ use anyhow::{Context, Error, Result, ensure};
 use gettextrs::gettext;
 use gst::prelude::*;
 use gtk::{
-    gio::{self, prelude::*},
+    gio,
     glib::{self, clone, closure_local, subclass::prelude::*},
 };
 

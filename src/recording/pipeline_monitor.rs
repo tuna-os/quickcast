@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use anyhow::{Context, Error};
+use anyhow::Error;
 use gettextrs::gettext;
 use gst::prelude::*;
-use gtk::{glib::{self, clone}, subclass::prelude::*};
+use gtk::{gio::prelude::FileExt, glib::{self, clone}, subclass::prelude::*};
 
 use super::{Recording, RecordingState};
 use crate::{help::ContextWithHelp, i18n::gettext_f};
