@@ -1,3 +1,3 @@
 [D-BUS Service]
 Name=@app-id@
-Exec=@bindir@/kooha --gapplication-service
+Exec=@bindir@/quickcast --gapplication-service
