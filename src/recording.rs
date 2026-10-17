@@ -648,7 +648,7 @@ async fn new_screencast_session(
         ?cursor_mode,
         ?source_type,
         is_multiple_sources,
-        restore_token,
+        has_restore_token = restore_token.is_some(),
         ?persist_mode,
         "Selecting sources"
     );
