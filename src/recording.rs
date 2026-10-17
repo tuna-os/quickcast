@@ -3,10 +3,9 @@ use std::{
     error,
     ffi::OsStr,
     fmt,
-    os::fd::{IntoRawFd, OwnedFd},
+    os::fd::IntoRawFd,
     path::{Path, PathBuf},
     rc::Rc,
-    time::Duration,
 };
 
 use anyhow::{Context, Error, Result, ensure};
@@ -18,21 +17,14 @@ use gtk::{
 };
 
 use crate::{
-    application::Application,
-    area_selector::AreaSelector,
     cancelled::Cancelled,
     experimental::Feature,
     help::ContextWithHelp,
     i18n::gettext_f,
-    pipeline::PipelineBuilder,
-    screencast_portal::{
-        CursorMode, PersistMode, Proxy, Session, SourceType, Stream, WindowIdentifier,
-    },
-    settings::{CaptureMode, Settings},
+    screencast_portal::{CursorMode, PersistMode, Session, SourceType},
+    settings::Settings,
     timer::Timer,
 };
-
-const DURATION_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug)]
 pub struct NoProfileError;
@@ -65,6 +57,11 @@ pub enum RecordingState {
 #[derive(Debug, Clone, glib::SharedBoxed)]
 #[shared_boxed_type(name = "KoohaRecordingResult")]
 struct BoxedResult(Rc<Result<(gio::File, gst::ClockTime)>>);
+
+mod delay;
+mod pipeline_monitor;
+mod pipeline_runner;
+mod portal_session;
 
 mod imp {
     use std::sync::LazyLock;
@@ -165,7 +162,7 @@ impl Recording {
         // Setup screencast session
         let restore_token = settings.screencast_restore_token();
         settings.reset_screencast_restore_token();
-        let (screencast_session, streams, restore_token, fd) = new_screencast_session(
+        let (screencast_session, streams, restore_token, fd) = portal_session::start(
             if settings.show_pointer() {
                 CursorMode::EMBEDDED
             } else {
@@ -200,86 +197,19 @@ impl Recording {
         imp.file.set(gio::File::for_path(&file_path)).unwrap();
 
         let raw_fd = fd.into_raw_fd();
-
-        let mut pipeline_builder = PipelineBuilder::new(
-            file_path,
-            settings.framerate(),
-            profile.clone(),
-            raw_fd,
-            streams.clone(),
-        );
-
-        // Select area
-        if settings.capture_mode() == CaptureMode::Selection {
-            let data = AreaSelector::select(raw_fd, &streams, &Application::get().window()).await?;
-            pipeline_builder.select_area_data(data);
-        }
-
-        if profile.supports_audio() {
-            pipeline_builder.record_desktop_audio(settings.record_desktop_audio());
-            pipeline_builder.record_microphone(settings.record_microphone());
-        }
-
-        // Monitor/region streams already include the floating webcam window.
-        // Compositing it again would duplicate the bubble. Window-only streams
-        // exclude other windows, so feed the same camera frames to the encoder.
-        if settings.record_camera()
-            && streams
-                .iter()
-                .any(|s| s.source_type() == Some(SourceType::WINDOW))
-        {
-            pipeline_builder.camera(
-                Application::get().window().camera_feed()?,
-                settings.camera_corner(),
-            );
-        }
-        // Build pipeline
-        let pipeline = pipeline_builder.build().with_context(|| {
-            ContextWithHelp::new(
-                gettext("Failed to start recording"),
-                gettext("A GStreamer plugin may not be installed."),
-            )
-        })?;
+        let pipeline = pipeline_runner::build(file_path, settings, profile, raw_fd, &streams)
+            .await
+            .with_context(|| {
+                ContextWithHelp::new(
+                    gettext("Failed to start recording"),
+                    gettext("A GStreamer plugin may not be installed."),
+                )
+            })?;
         imp.pipeline.set(pipeline.clone()).unwrap();
 
         // Setup and run timer
-        let timer = Timer::new(
-            settings.record_delay(),
-            clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move |secs_left| {
-                    obj.set_state(RecordingState::Delayed { secs_left });
-                }
-            ),
-        );
-        imp.timer.replace(Some(Timer::clone(&timer)));
-        timer.await?;
-
-        let bus_watch_guard = pipeline
-            .bus()
-            .unwrap()
-            .add_watch_local(clone!(
-                #[weak(rename_to = obj)]
-                self,
-                #[upgrade_or_panic]
-                move |_, message| obj.handle_bus_message(message)
-            ))
-            .unwrap();
-        imp.bus_watch_guard.replace(Some(bus_watch_guard));
-        imp.duration_source_id.replace(Some(glib::timeout_add_local(
-            DURATION_UPDATE_INTERVAL,
-            clone!(
-                #[weak(rename_to = obj)]
-                self,
-                #[upgrade_or_panic]
-                move || {
-                    obj.update_duration();
-                    obj.update_flushing_progress();
-                    glib::ControlFlow::Continue
-                }
-            ),
-        )));
+        delay::wait(self, settings.record_delay()).await?;
+        pipeline_monitor::start(self, &pipeline);
 
         pipeline
             .set_state(gst::State::Playing)
@@ -291,7 +221,7 @@ impl Recording {
                 )
             })?;
 
-        self.update_duration();
+        pipeline_monitor::update_duration(self);
 
         Ok(())
     }
@@ -341,7 +271,7 @@ impl Recording {
         self.set_state(RecordingState::Flushing { progress: 0 });
         imp.estimated_final_duration
             .set(pipeline.current_running_time());
-        self.update_flushing_progress();
+        pipeline_monitor::update_flushing_progress(self);
 
         tracing::debug!("Sending eos event to pipeline");
         // FIXME Maybe it is needed to verify if we received the same
@@ -440,250 +370,8 @@ impl Recording {
         }
     }
 
-    fn update_duration(&self) {
-        let imp = self.imp();
-
-        let clock_time = imp
-            .pipeline
-            .get()
-            .and_then(|pipeline| pipeline.query_position::<gst::ClockTime>())
-            .unwrap_or(gst::ClockTime::ZERO);
-
-        if clock_time == self.duration() {
-            return;
-        }
-
-        imp.duration.set(clock_time);
-        self.notify_duration();
-    }
-
-    fn update_flushing_progress(&self) {
-        let imp = self.imp();
-
-        let RecordingState::Flushing {
-            progress: prev_progress,
-        } = self.state()
-        else {
-            return;
-        };
-
-        let progress = imp
-            .estimated_final_duration
-            .get()
-            .map_or(0, |estimated_final_duration| {
-                let progress_percent = self.duration().nseconds() as f64
-                    / estimated_final_duration.nseconds() as f64
-                    * 100.0;
-                (progress_percent.round() as u8).clamp(0, 100)
-            });
-
-        if prev_progress == progress {
-            return;
-        }
-
-        self.set_state(RecordingState::Flushing { progress });
-    }
-
-    fn handle_bus_message(&self, message: &gst::Message) -> glib::ControlFlow {
-        use gst::MessageView;
-
-        let imp = self.imp();
-
-        match message.view() {
-            MessageView::Error(e) => {
-                tracing::debug!(state = ?self.state(), "Received error at bus");
-
-                if let Err(err) = self.pipeline().set_state(gst::State::Null) {
-                    tracing::warn!("Failed to stop pipeline on error: {:?}", err);
-                }
-
-                self.close_session();
-
-                if let Some(source_id) = imp.duration_source_id.take() {
-                    source_id.remove();
-                }
-
-                // TODO print error quarks for all glib::Error
-
-                let error = Error::from(e.error())
-                    .context(e.debug().unwrap_or_else(|| "<no debug>".into()))
-                    .context(gettext("An error occurred while recording"));
-
-                let error = if e.error().matches(gst::ResourceError::OpenWrite) {
-                    error.context(ContextWithHelp::new(
-                        gettext_f(
-                            // Translators: Do NOT translate the contents between '{' and '}', this is a variable name.
-                            "Failed to open “{path}” for writing",
-                            &[("path", &self.file().uri())],
-                        ),
-                        gettext("Make sure that the saving location exists and is accessible."),
-                    ))
-                } else {
-                    error
-                };
-
-                self.set_finished(Err(error));
-
-                glib::ControlFlow::Break
-            }
-            MessageView::Eos(..) => {
-                tracing::debug!("Eos signal received from record bus");
-
-                debug_assert!(
-                    matches!(self.state(), RecordingState::Flushing { .. }),
-                    "received eos signal on {:?}",
-                    self.state()
-                );
-
-                self.set_state(RecordingState::Flushing { progress: 100 });
-
-                self.update_duration();
-                let duration = self.duration();
-
-                if let Err(err) = self.pipeline().set_state(gst::State::Null) {
-                    tracing::error!("Failed to stop pipeline on eos: {:?}", err);
-                }
-
-                self.close_session();
-
-                if let Some(source_id) = imp.duration_source_id.take() {
-                    source_id.remove();
-                }
-
-                self.set_finished(Ok((self.file().clone(), duration)));
-
-                glib::ControlFlow::Break
-            }
-            MessageView::StateChanged(sc) => {
-                let new_state = sc.current();
-
-                if message.src()
-                    != imp
-                        .pipeline
-                        .get()
-                        .map(|pipeline| pipeline.upcast_ref::<gst::Object>())
-                {
-                    tracing::trace!(
-                        "`{}` changed state from `{:?}` -> `{:?}`",
-                        message
-                            .src()
-                            .map_or_else(|| "<unknown source>".into(), |e| e.name()),
-                        sc.old(),
-                        new_state,
-                    );
-                    return glib::ControlFlow::Continue;
-                }
-
-                tracing::debug!(
-                    "Pipeline changed state from `{:?}` -> `{:?}`",
-                    sc.old(),
-                    new_state,
-                );
-
-                let state = match new_state {
-                    gst::State::Paused => RecordingState::Paused,
-                    gst::State::Playing => RecordingState::Recording,
-                    _ => return glib::ControlFlow::Continue,
-                };
-                self.set_state(state);
-
-                glib::ControlFlow::Continue
-            }
-            MessageView::AsyncDone(ad) => {
-                tracing::trace!("Received async-done message on bus: {:?}", ad);
-
-                // This is enabled by setting `GST_DEBUG_DUMP_DOT_DIR` to a directory (e.g. `GST_DEBUG_DUMP_DOT_DIR=.`).
-                self.pipeline().debug_to_dot_file_with_ts(
-                    gst::DebugGraphDetails::VERBOSE,
-                    "kooha-recording-pipeline",
-                );
-
-                glib::ControlFlow::Continue
-            }
-            MessageView::Warning(w) => {
-                tracing::warn!("Received warning message on bus: {:?}", w);
-                glib::ControlFlow::Continue
-            }
-            MessageView::Info(i) => {
-                tracing::debug!("Received info message on bus: {:?}", i);
-                glib::ControlFlow::Continue
-            }
-            MessageView::Qos(q) => {
-                tracing::warn!("Received qos message on bus: {:?}", q);
-                glib::ControlFlow::Continue
-            }
-            other => {
-                tracing::trace!("Received other message on bus: {:?}", other);
-                glib::ControlFlow::Continue
-            }
-        }
-    }
 }
 
-async fn new_screencast_session(
-    cursor_mode: CursorMode,
-    source_type: SourceType,
-    is_multiple_sources: bool,
-    restore_token: Option<&str>,
-    persist_mode: PersistMode,
-    parent_window: Option<&impl IsA<gtk::Window>>,
-) -> Result<(Session, Vec<Stream>, Option<String>, OwnedFd)> {
-    let proxy = Proxy::new()
-        .await
-        .context("Failed to create screencast proxy")?;
-
-    tracing::debug!(
-        version = ?proxy.version(),
-        available_cursor_modes = ?proxy.available_cursor_modes(),
-        available_source_types = ?proxy.available_source_types(),
-        "Created screencast proxy"
-    );
-
-    let session = proxy
-        .create_session()
-        .await
-        .context("Failed to create session")?;
-
-    tracing::debug!(
-        ?cursor_mode,
-        ?source_type,
-        is_multiple_sources,
-        has_restore_token = restore_token.is_some(),
-        ?persist_mode,
-        "Selecting sources"
-    );
-
-    session
-        .select_sources(
-            source_type,
-            is_multiple_sources,
-            cursor_mode,
-            restore_token,
-            persist_mode,
-        )
-        .await
-        .context("Failed to select sources")?;
-
-    let window_identifier = if let Some(window) = parent_window {
-        WindowIdentifier::new(window.as_ref()).await
-    } else {
-        WindowIdentifier::None
-    };
-
-    tracing::debug!(%window_identifier, "Starting session");
-
-    let (streams, restore_token) = session
-        .start(window_identifier)
-        .await
-        .context("Failed to start session")?;
-
-    let fd = session
-        .open_pipe_wire_remote()
-        .await
-        .context("Failed to open pipewire remote")?;
-
-    Ok((session, streams, restore_token, fd))
-}
 
 fn new_recording_path(saving_location: &Path, extension: impl AsRef<OsStr>) -> PathBuf {
     let file_name = glib::DateTime::now_local()

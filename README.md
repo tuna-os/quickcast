@@ -123,6 +123,21 @@ all three offered clipboard formats.
 Real GNOME portal selection, physical audio/video synchronization, and pasting
 into individual chat/browser apps still require interactive hardware testing.
 
+## Recording implementation layout
+
+The recording GObject keeps the public state machine and lifecycle API in
+`src/recording.rs`. Its integration boundaries are separated into focused
+modules:
+
+- `src/recording/portal_session.rs` handles desktop portal negotiation and
+  PipeWire stream setup.
+- `src/recording/pipeline_runner.rs` translates settings and selected sources
+  into a GStreamer pipeline.
+- `src/recording/pipeline_monitor.rs` owns bus messages, duration updates, and
+  finalization progress.
+- `src/recording/delay.rs` adapts the cancellable countdown timer to recording
+  state updates.
+
 ## Publishing
 
 Tag releases as `v0.1.0`, etc., or dispatch **Publish Quickcast Flatpak**. The
