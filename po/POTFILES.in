@@ -12,5 +12,6 @@ src/format.rs
 src/main.rs
 src/preferences_dialog.rs
 src/recording.rs
+src/recording/pipeline_monitor.rs
 src/settings.rs
 src/window/mod.rs
