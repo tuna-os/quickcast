@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Quickcast
-Exec=kooha
+Exec=quickcast
 Comment=Elegantly record your screen
 Type=Application
 Terminal=false
