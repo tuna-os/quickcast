@@ -5,6 +5,9 @@ on:
       - "**/Cargo.lock"
 
 name: Audit
+permissions:
+  contents: read
+  checks: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
