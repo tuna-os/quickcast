@@ -20,13 +20,13 @@ jobs:
   configuration:
     runs-on: ubuntu-24.04
     outputs:
-      index-token: ${{ steps.token.outputs.available }}
+      index-key: ${{ steps.key.outputs.available }}
     steps:
-      - id: token
+      - id: key
         env:
-          INDEX_TOKEN: ${{ secrets.FLATPAK_INDEX_TOKEN }}
+          INDEX_DEPLOY_KEY: ${{ secrets.FLATPAK_INDEX_DEPLOY_KEY }}
         run: |
-          if [ -n "$INDEX_TOKEN" ]; then echo 'available=true' >> "$GITHUB_OUTPUT";
+          if [ -n "$INDEX_DEPLOY_KEY" ]; then echo 'available=true' >> "$GITHUB_OUTPUT";
           else echo 'available=false' >> "$GITHUB_OUTPUT"; fi
   build:
     needs: configuration
@@ -37,15 +37,14 @@ jobs:
       repo-name: tuna-os/quickcast
       archs: '["x86_64"]'
       attach-bundles: true
-      publish: ${{ needs.configuration.outputs.index-token == 'true' && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
+      publish: ${{ needs.configuration.outputs.index-key == 'true' && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
     secrets:
-      # In build-only mode this credential is unused. A repository-scoped
-      # GITHUB_TOKEN satisfies the shared workflow's required input without
-      # granting or attempting cross-repository access.
-      FLATPAK_INDEX_TOKEN: ${{ secrets.FLATPAK_INDEX_TOKEN || secrets.GITHUB_TOKEN }}
+      # The docs deploy key the shared workflow pushes the central index with.
+      # In build-only mode it is unused.
+      FLATPAK_INDEX_DEPLOY_KEY: ${{ secrets.FLATPAK_INDEX_DEPLOY_KEY }}
   publish-package:
     needs: [configuration, build]
-    if: needs.configuration.outputs.index-token != 'true' && (github.event_name != 'workflow_dispatch' || inputs.publish)
+    if: needs.configuration.outputs.index-key != 'true' && (github.event_name != 'workflow_dispatch' || inputs.publish)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v8
@@ -75,4 +74,4 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" bundles/*.flatpak --repo "$GITHUB_REPOSITORY" --clobber
       - name: Report index handoff
         run: |
-          echo 'Package published. FLATPAK_INDEX_TOKEN is unavailable, so the central index must be updated from the oci-x86_64 artifact by an authorized maintainer.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Package published. FLATPAK_INDEX_DEPLOY_KEY is unavailable, so the central index must be updated from the oci-x86_64 artifact by an authorized maintainer.' >> "$GITHUB_STEP_SUMMARY"
