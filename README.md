@@ -142,9 +142,9 @@ modules:
 
 Tag releases as `v0.1.0`, etc., or dispatch **Publish Quickcast Flatpak**. The
 workflow calls the shared `tuna-os/.github` publisher, pushes
-`ghcr.io/tuna-os/quickcast`, and updates the served TunaOS Flatpak index. It inherits
-`FLATPAK_INDEX_TOKEN` from the organization/repository; that credential needs access
-to the central index repository. When it is unavailable, the same shared workflow
+`ghcr.io/tuna-os/quickcast`, and updates the served TunaOS Flatpak index. It passes
+the `FLATPAK_INDEX_DEPLOY_KEY` organization secret (a write deploy key on the central
+index repository, tuna-os/docs) to the shared publisher. When it is unavailable, the same shared workflow
 builds the artifacts and the fallback publishes GHCR and the release bundle;
 an authorized maintainer must then update the central index from the OCI artifact.
 CI on `main` builds and tests without publishing.
