@@ -8,9 +8,7 @@ on:
         description: Publish to GHCR (and the TunaOS index when its credential is available)
         type: boolean
         default: true
-permissions:
-  contents: write
-  packages: write
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -19,6 +17,8 @@ concurrency:
 jobs:
   configuration:
     runs-on: ubuntu-24.04
+    # Reads a secret only; the job token is unused.
+    permissions: {}
     outputs:
       index-key: ${{ steps.key.outputs.available }}
     steps:
@@ -30,7 +30,11 @@ jobs:
           else echo 'available=false' >> "$GITHUB_OUTPUT"; fi
   build:
     needs: configuration
-    uses: tuna-os/.github/.github/workflows/publish-flatpak.yml@main
+    # The shared workflow pushes to GHCR and uploads release bundles.
+    permissions:
+      contents: write
+      packages: write
+    uses: tuna-os/.github/.github/workflows/publish-flatpak.yml@4078f531ac74703f203bde835ef6c25e9321b97b # main # zizmor: ignore[ref-version-mismatch] pinned to a reviewed main commit; Renovate bumps the digest, so main may be ahead
     with:
       app-id: org.tunaos.Quickcast
       manifest-path: org.tunaos.Quickcast.json
@@ -46,12 +50,16 @@ jobs:
     needs: [configuration, build]
     if: needs.configuration.outputs.index-key != 'true' && (github.event_name != 'workflow_dispatch' || inputs.publish)
     runs-on: ubuntu-24.04
+    # skopeo pushes to GHCR; gh release upload attaches the bundle.
+    permissions:
+      contents: write
+      packages: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: oci-x86_64
           path: oci-x86_64
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: bundle-x86_64
           path: bundles
