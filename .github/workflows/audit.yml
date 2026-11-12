@@ -18,7 +18,9 @@ jobs:
     name: Rust Audit
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v3.7.0
+        with:
+          persist-credentials: false
       - uses: rustsec/audit-check@v1.4.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

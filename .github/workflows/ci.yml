@@ -14,7 +14,9 @@ jobs:
   build-and-test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Install build environment
         run: |
           sudo apt-get update
@@ -25,7 +27,7 @@ jobs:
         run: ./scripts/build-local.sh
       - name: Test recording, decoded video, clipboard and UI
         run: ./scripts/test-local.sh
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: Quickcast
           path: |
