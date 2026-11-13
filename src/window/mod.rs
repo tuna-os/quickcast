@@ -954,8 +954,16 @@ mod quickcast_tests {
         .unwrap();
         bubble.feed.place(0.25, 0.75, 0.2);
         capture.set_state(gst::State::Playing).unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        while std::time::Instant::now() < deadline {
+        // Run for at least 2 s, then keep going until the frames have arrived:
+        // a loaded runner with software GL can spend most of a fixed window
+        // starting the pipeline, which is slow, not broken.
+        let started = std::time::Instant::now();
+        let min_deadline = started + std::time::Duration::from_secs(2);
+        let max_deadline = started + std::time::Duration::from_secs(20);
+        while std::time::Instant::now() < min_deadline
+            || (frames.load(std::sync::atomic::Ordering::Relaxed) < 5
+                && std::time::Instant::now() < max_deadline)
+        {
             while context.pending() {
                 context.iteration(false);
             }
