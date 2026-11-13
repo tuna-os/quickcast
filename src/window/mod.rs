@@ -866,7 +866,16 @@ mod quickcast_tests {
         }
         let test_dir = std::env::var("QUICKCAST_TEST_DIR")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::env::temp_dir());
+            .unwrap_or_else(|_| {
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or_default();
+                std::env::temp_dir().join(format!(
+                    "quickcast-test-{}-{nanos}",
+                    std::process::id()
+                ))
+            });
         let file_path = test_dir.join("Quickcast test clip.mp4");
         let file = gio::File::for_path(file_path);
         window.imp().pending_copy.replace(Some(file.clone()));
