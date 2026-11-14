@@ -34,8 +34,10 @@ jobs:
             Quickcast.flatpak
             test-artifacts/
 
-  # Report-only: collects Rust unit-test coverage on the runner (the same
-  # tests meson runs as `cargo-test`) and publishes lcov.info as an artifact.
+  # Report-only: collects Rust unit-test coverage (the same tests meson runs as
+  # `cargo-test`) and publishes lcov.info as an artifact. Runs inside the GNOME 50
+  # SDK, like build-and-test: the Ubuntu archive ships gtk4 4.14 and libadwaita 1.5,
+  # below the minimums meson.build requires (gtk4 >= 4.15.3, libadwaita >= 1.9).
   coverage:
     runs-on: ubuntu-24.04
     continue-on-error: true
@@ -43,29 +45,42 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - name: Install build environment
+      - name: Install flatpak and GNOME 50 SDK
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build libglib2.0-dev libgtk-4-dev libadwaita-1-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gettext appstream desktop-file-utils \
-            xvfb librsvg2-common
-      - name: Install Rust coverage tooling
-        run: |
-          rustup toolchain install stable --profile minimal --component llvm-tools-preview
-          rustup default stable
-          cargo install --locked cargo-llvm-cov
+          sudo apt-get install -y flatpak xvfb librsvg2-common
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
       - name: Configure (generates src/config.rs and resources)
         run: |
-          meson setup _build
-          meson compile -C _build
-      - name: Collect unit-test coverage
-        env:
-          GSETTINGS_BACKEND: memory
-          GSK_RENDERER: cairo
+          flatpak run --user --share=network --filesystem="$PWD" --command=sh org.gnome.Sdk//50 -c '
+            set -eu
+            export PATH=/usr/lib/sdk/rust-stable/bin:$PATH
+            cd "$1"
+            meson setup _build
+            meson compile -C _build
+          ' sh "$PWD"
+      - name: Install Rust coverage tooling
         run: |
-          xvfb-run -a dbus-run-session -- \
+          flatpak run --user --share=network --filesystem="$PWD" --command=sh org.gnome.Sdk//50 -c '
+            set -eu
+            export PATH=/usr/lib/sdk/rust-stable/bin:$PATH
+            export CARGO_HOME="$1/.cargo-home"
+            if command -v rustup >/dev/null 2>&1; then rustup component add llvm-tools-preview; fi
+            cargo install --locked cargo-llvm-cov
+          ' sh "$PWD"
+      - name: Collect unit-test coverage
+        run: |
+          xvfb-run -a flatpak run --user --socket=x11 --nosocket=wayland --share=network \
+            --filesystem="$PWD" --command=dbus-run-session org.gnome.Sdk//50 -- sh -c '
+            set -eu
+            export PATH=/usr/lib/sdk/rust-stable/bin:$1/.cargo-home/bin:$PATH
+            export CARGO_HOME="$1/.cargo-home"
+            export GSETTINGS_BACKEND=memory GSK_RENDERER=cairo
+            cd "$1"
             cargo llvm-cov --lcov --output-path lcov.info -- --nocapture
-          cargo llvm-cov report --summary-only | tee coverage-summary.txt
+            cargo llvm-cov report --summary-only | tee coverage-summary.txt
+          ' sh "$PWD"
       - uses: actions/upload-artifact@v7.0.2
         if: ${{ !cancelled() }}
         with:
