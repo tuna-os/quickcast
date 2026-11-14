@@ -57,8 +57,14 @@ jobs:
             set -eu
             export PATH=/usr/lib/sdk/rust-stable/bin:$PATH
             cd "$1"
-            meson setup _build
+            # Install into a workspace-local prefix so PKGDATADIR (baked into
+            # config.rs) points at resources.gresource and the GSchema, which
+            # the unit tests load. Without this they default to /usr/local and
+            # nothing is installed there inside the sandbox.
+            meson setup _build --prefix="$1/_stage/app"
             meson compile -C _build
+            meson install -C _build --no-rebuild
+            glib-compile-schemas "$1/_stage/app/share/glib-2.0/schemas"
           ' sh "$PWD"
       - name: Install Rust coverage tooling
         run: |
@@ -77,6 +83,7 @@ jobs:
             export PATH=/usr/lib/sdk/rust-stable/bin:$1/.cargo-home/bin:$PATH
             export CARGO_HOME="$1/.cargo-home"
             export GSETTINGS_BACKEND=memory GSK_RENDERER=cairo
+            export GSETTINGS_SCHEMA_DIR="$1/_stage/app/share/glib-2.0/schemas"
             cd "$1"
             cargo llvm-cov --lcov --output-path lcov.info -- --nocapture
             cargo llvm-cov report --summary-only | tee coverage-summary.txt
