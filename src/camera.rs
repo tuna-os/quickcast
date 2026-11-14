@@ -208,6 +208,46 @@ fn attach_inputs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A directory under the shared temp dir that this process has just
+    /// created for itself. A fixed name could be made first by another local
+    /// user, who would then choose where the recording is written.
+    fn fresh_temp_dir() -> std::path::PathBuf {
+        use std::os::unix::fs::DirBuilderExt;
+        loop {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default();
+            let directory = std::env::temp_dir().join(format!(
+                "quickcast-test-{}-{nanos}",
+                std::process::id()
+            ));
+            // `create` fails on a name that already exists, directory or
+            // symlink, instead of adopting it.
+            match std::fs::DirBuilder::new().mode(0o700).create(&directory) {
+                Ok(()) => return directory,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("Cannot create {}: {error}", directory.display()),
+            }
+        }
+    }
+
+    #[test]
+    fn fresh_temp_dir_is_new_and_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let first = fresh_temp_dir();
+        let second = fresh_temp_dir();
+        assert_ne!(first, second);
+        for directory in [&first, &second] {
+            let metadata = std::fs::symlink_metadata(directory).unwrap();
+            assert!(metadata.is_dir());
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+            assert_eq!(std::fs::read_dir(directory).unwrap().count(), 0);
+            std::fs::remove_dir(directory).unwrap();
+        }
+    }
+
     #[test]
     fn overlay_stays_in_captured_region() {
         for (width, height) in [(1920, 1080), (3840, 2160), (301, 901), (100, 40)] {
@@ -222,10 +262,16 @@ mod tests {
         gst::init().unwrap();
         let resources = gtk::gio::Resource::load(crate::config::RESOURCES_FILE).unwrap();
         gtk::gio::resources_register(&resources);
-        let directory = std::env::var("QUICKCAST_TEST_DIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::env::temp_dir().join("quickcast-tests"));
-        std::fs::create_dir_all(&directory).unwrap();
+        // CI names a directory to keep the recording in; otherwise use a
+        // scratch one and remove it afterwards.
+        let (directory, is_scratch) = match std::env::var("QUICKCAST_TEST_DIR") {
+            Ok(directory) => {
+                let directory = std::path::PathBuf::from(directory);
+                std::fs::create_dir_all(&directory).unwrap();
+                (directory, false)
+            }
+            Err(_) => (fresh_temp_dir(), true),
+        };
         let file = directory.join("composite.mp4");
         let pipeline = gst::Pipeline::new();
         let screen = gst::parse::bin_from_description(
@@ -277,6 +323,9 @@ mod tests {
             }
             _ => panic!("Synthetic recording did not finalize in 20 seconds"),
         }
-        assert!(std::fs::metadata(file).unwrap().len() > 1000);
+        assert!(std::fs::metadata(&file).unwrap().len() > 1000);
+        if is_scratch {
+            std::fs::remove_dir_all(&directory).unwrap();
+        }
     }
 }
