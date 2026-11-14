@@ -33,3 +33,44 @@ jobs:
           path: |
             Quickcast.flatpak
             test-artifacts/
+
+  # Report-only: collects Rust unit-test coverage on the runner (the same
+  # tests meson runs as `cargo-test`) and publishes lcov.info as an artifact.
+  coverage:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build libglib2.0-dev libgtk-4-dev libadwaita-1-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gettext appstream desktop-file-utils \
+            xvfb librsvg2-common
+      - name: Install Rust coverage tooling
+        run: |
+          rustup toolchain install stable --profile minimal --component llvm-tools-preview
+          rustup default stable
+          cargo install --locked cargo-llvm-cov
+      - name: Configure (generates src/config.rs and resources)
+        run: |
+          meson setup _build
+          meson compile -C _build
+      - name: Collect unit-test coverage
+        env:
+          GSETTINGS_BACKEND: memory
+          GSK_RENDERER: cairo
+        run: |
+          xvfb-run -a dbus-run-session -- \
+            cargo llvm-cov --lcov --output-path lcov.info -- --nocapture
+          cargo llvm-cov report --summary-only | tee coverage-summary.txt
+      - uses: actions/upload-artifact@v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage
+          path: |
+            lcov.info
+            coverage-summary.txt
+          if-no-files-found: warn
