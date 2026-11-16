@@ -219,7 +219,10 @@ mod tests {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())
                 .unwrap_or_default();
-            let directory = std::env::temp_dir().join(format!(
+            // The name is unique and `create` below refuses an existing one.
+            #[allow(clippy::disallowed_methods)]
+            let temp_dir = std::env::temp_dir();
+            let directory = temp_dir.join(format!(
                 "quickcast-test-{}-{nanos}",
                 std::process::id()
             ));

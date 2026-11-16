@@ -871,7 +871,10 @@ mod quickcast_tests {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_nanos())
                     .unwrap_or_default();
-                std::env::temp_dir().join(format!(
+                // The name carries the process id and a timestamp, so it is not fixed.
+                #[allow(clippy::disallowed_methods)]
+                let temp_dir = std::env::temp_dir();
+                temp_dir.join(format!(
                     "quickcast-test-{}-{nanos}",
                     std::process::id()
                 ))
