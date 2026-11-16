@@ -160,6 +160,16 @@ mod tests {
         static INIT: Once = Once::new();
 
         INIT.call_once(|| {
+            // Respect a schema directory prepared by the caller (e.g. the CI coverage
+            // job installs the generated schema into a staging prefix); `data/` only
+            // holds the `.gschema.xml.in` template, so compiling it yields no schema.
+            if env::var_os("GSETTINGS_SCHEMA_DIR").is_some() {
+                unsafe {
+                    env::set_var("GSETTINGS_BACKEND", "memory");
+                }
+                return;
+            }
+
             let schema_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/data");
 
             let output = Command::new("glib-compile-schemas")
