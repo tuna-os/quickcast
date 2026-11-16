@@ -1,0 +1,5 @@
+# A fixed name under the shared temp directory can be created first by another
+# local user. Make the temp directory a deliberate choice at each call site.
+disallowed-methods = [
+    { path = "std::env::temp_dir", reason = "a fixed name under the shared temp dir can be planted by another local user; use a private directory (tempfile, or DirBuilder with mode 0o700 that fails on an existing name), or allow with a comment when the name is unique" },
+]

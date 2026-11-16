@@ -66,6 +66,15 @@ jobs:
             meson install -C _build --no-rebuild
             glib-compile-schemas "$1/_stage/app/share/glib-2.0/schemas"
           ' sh "$PWD"
+      - name: Lint for fixed names under the shared temp dir
+        run: |
+          flatpak run --user --share=network --filesystem="$PWD" --command=sh org.gnome.Sdk//50 -c '
+            set -eu
+            export PATH=/usr/lib/sdk/rust-stable/bin:$PATH
+            export CARGO_HOME="$1/.cargo-home"
+            cd "$1"
+            cargo clippy --all-targets -- -A clippy::all -D clippy::disallowed_methods
+          ' sh "$PWD"
       - name: Install Rust coverage tooling
         run: |
           flatpak run --user --share=network --filesystem="$PWD" --command=sh org.gnome.Sdk//50 -c '
