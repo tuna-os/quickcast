@@ -85,7 +85,11 @@ jobs:
             export GSETTINGS_BACKEND=memory GSK_RENDERER=cairo
             export GSETTINGS_SCHEMA_DIR="$1/_stage/app/share/glib-2.0/schemas"
             cd "$1"
-            cargo llvm-cov --lcov --output-path lcov.info -- --nocapture
+            # --ignore-run-fail: still write lcov.info when a test fails. The
+            # GUI tests can miss their frame/timing thresholds under the cairo
+            # renderer and instrumented build used here; build-and-test (meson
+            # cargo-test) remains the gate for test results.
+            cargo llvm-cov --lcov --output-path lcov.info --ignore-run-fail -- --nocapture
             cargo llvm-cov report --summary-only | tee coverage-summary.txt
           ' sh "$PWD"
       - uses: actions/upload-artifact@v7.0.2
