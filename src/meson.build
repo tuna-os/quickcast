@@ -82,3 +82,26 @@ test(
   ],
   timeout: 300, # give cargo more time
 )
+
+# `cargo-clippy` above does not compile test code, and test code is where a
+# fixed name under the shared temp dir has turned up before. Check every target
+# for the `disallowed-methods` in clippy.toml only: test code has other clippy
+# warnings, and those must not fail this.
+test(
+  'cargo-clippy-temp-dir',
+  cargo,
+  args: [
+    'clippy',
+    cargo_options,
+    '--all-targets',
+    '--',
+    '-A',
+    'clippy::all',
+    '-D',
+    'clippy::disallowed_methods'
+  ],
+  env: [
+    cargo_env
+  ],
+  timeout: 300, # give cargo more time
+)
