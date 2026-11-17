@@ -14,6 +14,12 @@ use crate::{
     window::Window,
 };
 
+// The GNOME Shell extension (`extension/extension.js`) and
+// `scripts/install-shortcut.py` activate these over `org.gtk.Actions`. Renaming
+// one breaks them without a compile error; `tests::shell_ipc_names_match` checks.
+pub const TOGGLE_RECORD_ACTION: &str = "toggle-record";
+pub const BUBBLE_POSITION_ACTION: &str = "bubble-position";
+
 mod imp {
     use std::cell::OnceCell;
 
@@ -237,7 +243,7 @@ impl Application {
                 about::present_dialog(&obj.window());
             })
             .build();
-        let toggle_record_action = gio::ActionEntry::builder("toggle-record")
+        let toggle_record_action = gio::ActionEntry::builder(TOGGLE_RECORD_ACTION)
             .activate(|obj: &Self, _, _| {
                 let window = obj.window();
                 if !window.is_busy() {
@@ -247,7 +253,7 @@ impl Application {
                     gtk::prelude::WidgetExt::activate_action(&window, "win.toggle-record", None);
             })
             .build();
-        let bubble_position_action = gio::ActionEntry::builder("bubble-position")
+        let bubble_position_action = gio::ActionEntry::builder(BUBBLE_POSITION_ACTION)
             .parameter_type(Some(&<(f64, f64, f64)>::static_variant_type()))
             .activate(|obj: &Self, _, param| {
                 if let Some((x, y, width)) = param.and_then(|p| p.get::<(f64, f64, f64)>()) {
@@ -276,5 +282,36 @@ impl Application {
         self.set_accels_for_action("win.toggle-record", &["<Control>r"]);
         // self.set_accels_for_action("win.toggle-pause", &["<Control>k"]); // See issue #112 in GitHub repo
         self.set_accels_for_action("win.cancel-record", &["<Control>c"]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EXTENSION: &str = include_str!("../extension/extension.js");
+    const SHORTCUT: &str = include_str!("../scripts/install-shortcut.py");
+
+    #[test]
+    fn shell_ipc_names_match() {
+        let object_path = format!("/{}", APP_ID.replace('.', "/"));
+        let parameter = <(f64, f64, f64)>::static_variant_type();
+        for name in [
+            APP_ID,
+            object_path.as_str(),
+            TOGGLE_RECORD_ACTION,
+            BUBBLE_POSITION_ACTION,
+            parameter.as_str(),
+            crate::bubble::WINDOW_TITLE,
+        ] {
+            assert!(
+                EXTENSION.contains(&format!("'{name}'")),
+                "extension/extension.js does not use '{name}'"
+            );
+        }
+        assert!(
+            SHORTCUT.contains(&format!("{APP_ID} {TOGGLE_RECORD_ACTION}")),
+            "scripts/install-shortcut.py does not activate {TOGGLE_RECORD_ACTION}"
+        );
     }
 }
