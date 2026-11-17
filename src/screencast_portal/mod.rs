@@ -298,7 +298,7 @@ async fn screencast_request_call(
             PROXY_CALL_TIMEOUT.as_millis() as i32,
         )
         .await
-        .with_context(|| format!("Failed to call `{}` with parameters: {:?}", method, params))?;
+        .with_context(|| call_failed_context(method, &params))?;
     debug_assert_eq!(variant_get::<(ObjectPath,)>(&path).unwrap().0, request_path);
 
     tracing::trace!("Waiting request response for method `{}`", method);
@@ -325,6 +325,17 @@ async fn screencast_request_call(
         )),
         no => Err(anyhow!("Unknown response number of {}", no)),
     }
+}
+
+/// Describes a failed portal call by its method and the type of its parameters.
+/// The values stay out: `SelectSources` carries the restore token, and this
+/// text reaches the log and the error dialog.
+fn call_failed_context(method: &str, params: &glib::Variant) -> String {
+    format!(
+        "Failed to call `{}` with parameters of type `{}`",
+        method,
+        params.type_()
+    )
 }
 
 /// Provides error messages on incorrect variant type.
@@ -357,6 +368,19 @@ mod tests {
         assert_eq!(
             "Expected type `u`; got `s` with value `'foo'`",
             err.to_string()
+        );
+    }
+
+    #[test]
+    fn call_failed_context_has_no_parameter_values() {
+        let options = VariantDict::builder()
+            .entry("restore_token", "secret-token")
+            .build();
+        let params = ("/session", options).to_variant();
+
+        assert_eq!(
+            "Failed to call `SelectSources` with parameters of type `(sa{sv})`",
+            call_failed_context("SelectSources", &params)
         );
     }
 }

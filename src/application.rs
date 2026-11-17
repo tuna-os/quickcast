@@ -20,6 +20,23 @@ use crate::{
 pub const TOGGLE_RECORD_ACTION: &str = "toggle-record";
 pub const BUBBLE_POSITION_ACTION: &str = "bubble-position";
 
+// The settings key that holds the screencast restore token. Its value must not
+// be written to a log; `tests::restore_token_is_not_logged` checks the name
+// against the schema, so a renamed key cannot slip past.
+const RESTORE_TOKEN_KEY: &str = "screencast-restore-token";
+
+/// The value of a changed setting as the trace log shows it. The restore token
+/// lets the app capture the screen again without asking, so the log says only
+/// whether one is stored.
+fn loggable_value(key: &str, value: &glib::Variant) -> String {
+    if key == RESTORE_TOKEN_KEY {
+        let is_set = value.str().is_some_and(|token| !token.is_empty());
+        return format!("<redacted, set: {is_set}>");
+    }
+
+    value.to_string()
+}
+
 mod imp {
     use std::cell::OnceCell;
 
@@ -104,7 +121,11 @@ impl Application {
 
             if tracing::enabled!(tracing::Level::TRACE) {
                 settings.connect_changed(None, |settings, key| {
-                    tracing::trace!("Settings `{}` changed to `{}`", key, settings.value(key));
+                    tracing::trace!(
+                        "Settings `{}` changed to `{}`",
+                        key,
+                        loggable_value(key, &settings.value(key))
+                    );
                 });
             }
 
@@ -291,6 +312,24 @@ mod tests {
 
     const EXTENSION: &str = include_str!("../extension/extension.js");
     const SHORTCUT: &str = include_str!("../scripts/install-shortcut.py");
+    const SCHEMA: &str = include_str!("../data/io.github.seadve.Kooha.gschema.xml.in");
+
+    #[test]
+    fn restore_token_is_not_logged() {
+        assert_eq!(
+            loggable_value(RESTORE_TOKEN_KEY, &"secret-token".to_variant()),
+            "<redacted, set: true>"
+        );
+        assert_eq!(
+            loggable_value(RESTORE_TOKEN_KEY, &"".to_variant()),
+            "<redacted, set: false>"
+        );
+        assert_eq!(loggable_value("profile-id", &"mp4".to_variant()), "'mp4'");
+        assert!(
+            SCHEMA.contains(&format!("name=\"{RESTORE_TOKEN_KEY}\"")),
+            "the settings schema has no key named {RESTORE_TOKEN_KEY}"
+        );
+    }
 
     #[test]
     fn shell_ipc_names_match() {
