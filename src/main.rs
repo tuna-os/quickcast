@@ -20,7 +20,8 @@
     clippy::unused_self,
     clippy::dbg_macro,
     clippy::todo,
-    clippy::print_stdout
+    clippy::print_stdout,
+    clippy::too_many_lines
 )]
 
 mod about;
