@@ -3,3 +3,8 @@
 disallowed-methods = [
     { path = "std::env::temp_dir", reason = "a fixed name under the shared temp dir can be planted by another local user; use a private directory (tempfile, or DirBuilder with mode 0o700 that fails on an existing name), or allow with a comment when the name is unique" },
 ]
+
+# Function-length ratchet: `clippy::too_many_lines` is enabled in src/main.rs and
+# the meson `cargo-clippy` test fails on it (-D warnings). Split a function that
+# grows past this rather than raising the limit (#87).
+too-many-lines-threshold = 150
