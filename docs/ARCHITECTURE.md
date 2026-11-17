@@ -110,6 +110,11 @@ private channels between them.
 - **Portal.** The app uses `org.freedesktop.portal.ScreenCast` on the session bus for
   screen and window capture. Capture permission is granted by the portal.
 
+The app ID, object path, action names, the `(ddd)` parameter type and the bubble
+title are defined once on the Rust side (`src/application.rs`, `src/bubble.rs`).
+The `shell_ipc_names_match` unit test fails if `extension/extension.js` or
+`scripts/install-shortcut.py` stops using the same values.
+
 Without the extension, the bubble is still shown and can be dragged. Always-on-top,
 workspace pinning and the live position updates for window-only recordings do not
 work.

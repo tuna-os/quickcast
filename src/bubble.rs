@@ -4,6 +4,10 @@ use gst::prelude::*;
 use gtk::{glib, prelude::*};
 use std::sync::{Arc, Mutex};
 
+/// The Shell extension finds the bubble by this exact title, so it is an IPC
+/// value, not UI text: do not pass it through gettext.
+pub const WINDOW_TITLE: &str = "Quickcast Webcam";
+
 #[derive(Clone, Debug)]
 pub struct CameraFeed {
     receiver: Arc<Mutex<glib::WeakRef<gst_app::AppSrc>>>,
@@ -117,7 +121,7 @@ impl Bubble {
         handle.set_child(Some(&picture));
         let window = gtk::Window::builder()
             .application(&crate::Application::get())
-            .title("Quickcast Webcam")
+            .title(WINDOW_TITLE)
             .decorated(false)
             .default_width(240)
             .default_height(240)
