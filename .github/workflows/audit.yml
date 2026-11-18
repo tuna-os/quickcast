@@ -18,7 +18,7 @@ jobs:
     name: Rust Audit
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3.7.0
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - uses: rustsec/audit-check@v1.4.1
