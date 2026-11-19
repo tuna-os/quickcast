@@ -845,6 +845,29 @@ impl Window {
 mod quickcast_tests {
     use super::*;
 
+    /// Pump the main context for at least 2s, then keep going (up to 15s)
+    /// until the sink has seen five frames: a loaded CI runner can take longer
+    /// than 2s to deliver them.
+    fn pump_until_frames(
+        context: &glib::MainContext,
+        frames: &std::sync::atomic::AtomicUsize,
+    ) {
+        let started = std::time::Instant::now();
+        loop {
+            while context.pending() {
+                context.iteration(false);
+            }
+            let elapsed = started.elapsed();
+            let enough = frames.load(std::sync::atomic::Ordering::Relaxed) >= 5;
+            if elapsed >= std::time::Duration::from_secs(15)
+                || (elapsed >= std::time::Duration::from_secs(2) && enough)
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
     #[gtk::test]
     fn window_copies_file_formats_and_renders() {
         gst::init().unwrap();
@@ -957,13 +980,7 @@ mod quickcast_tests {
         .unwrap();
         bubble.feed.place(0.25, 0.75, 0.2);
         capture.set_state(gst::State::Playing).unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        while std::time::Instant::now() < deadline {
-            while context.pending() {
-                context.iteration(false);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
+        pump_until_frames(&context, &frames);
         let pad = capture
             .by_name("quickcast-compositor")
             .unwrap()
