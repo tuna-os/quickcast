@@ -3,11 +3,15 @@ on:
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
+      - ".github/workflows/audit.yml"
+  schedule:
+    # An advisory against a crate that is already locked changes no file,
+    # so the push trigger alone never sees it.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
 
 name: Audit
-permissions:
-  contents: read
-  checks: write
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -17,6 +21,11 @@ jobs:
   rust-audit:
     name: Rust Audit
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      # A check run on push; one issue per advisory on schedule.
+      checks: write
+      issues: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
