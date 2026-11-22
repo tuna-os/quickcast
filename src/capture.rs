@@ -1,5 +1,5 @@
 //! Capture infrastructure shared by the recording pipeline and the area
-//! selector preview: the PipeWire video source and the crop applied to a
+//! selector preview: the `PipeWire` video source and the crop applied to a
 //! captured stream. Nothing here depends on a widget, so the selector and the
 //! recording pipeline both depend on this module instead of on each other.
 
