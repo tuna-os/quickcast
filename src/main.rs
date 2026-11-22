@@ -30,6 +30,7 @@ mod area_selector;
 mod bubble;
 mod camera;
 mod cancelled;
+mod capture;
 mod config;
 mod device;
 mod experimental;

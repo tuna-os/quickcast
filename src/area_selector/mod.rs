@@ -14,7 +14,12 @@ use std::{cell::RefCell, os::unix::prelude::RawFd};
 
 pub use self::view_port::Selection;
 use self::view_port::ViewPort;
-use crate::{application::Application, cancelled::Cancelled, pipeline, screencast_portal::Stream};
+use crate::{
+    application::Application,
+    cancelled::Cancelled,
+    capture::{self, CaptureCrop},
+    screencast_portal::Stream,
+};
 
 const PREVIEW_FRAMERATE: gst::Fraction = gst::Fraction::from_integer(60);
 const WINDOW_TO_MONITOR_SCALE_FACTOR: f64 = 0.4;
@@ -23,16 +28,6 @@ const WINDOW_TO_MONITOR_SCALE_FACTOR: f64 = 0.4;
 // It is not much of a problem if we get this wrong since the header bar height is not used for
 // anything important aside from the window size calculation.
 const ASSUMED_HEADER_BAR_HEIGHT: f64 = 46.0;
-
-#[derive(Debug)]
-pub struct SelectAreaData {
-    /// Selection relative to `paintable_rect`
-    pub selection: Selection,
-    /// The geometry of paintable where the stream is displayed
-    pub paintable_rect: Rect,
-    /// Actual stream size
-    pub stream_size: (i32, i32),
-}
 
 /// Context to identify if the selection is still valid.
 #[derive(Debug, Clone, PartialEq, glib::Variant)]
@@ -190,7 +185,7 @@ impl AreaSelector {
         fd: RawFd,
         streams: &[Stream],
         parent: &impl IsA<gtk::Window>,
-    ) -> Result<SelectAreaData> {
+    ) -> Result<CaptureCrop> {
         let this: Self = glib::Object::builder()
             .property("transient-for", parent)
             .property("modal", true)
@@ -221,7 +216,7 @@ impl AreaSelector {
         let pipeline = gst::Pipeline::new();
         imp.pipeline.set(pipeline.clone()).unwrap();
 
-        let videosrc_bin = pipeline::make_videosrc_bin(fd, streams, PREVIEW_FRAMERATE)?;
+        let videosrc_bin = capture::make_videosrc_bin(fd, streams, PREVIEW_FRAMERATE)?;
         let gtksink = gst::ElementFactory::make("gtk4paintablesink").build()?;
 
         let paintable = gtksink.property::<gdk::Paintable>("paintable");
@@ -321,11 +316,11 @@ impl AreaSelector {
         // Wait for user response
         result_rx.await.unwrap()?;
 
-        Ok(SelectAreaData {
-            selection: imp.view_port.selection().unwrap(),
-            paintable_rect: imp.view_port.paintable_rect().unwrap(),
-            stream_size: (stream_width, stream_height),
-        })
+        Ok(CaptureCrop::from_selection(
+            &imp.view_port.selection().unwrap().rect(),
+            &imp.view_port.paintable_rect().unwrap(),
+            (stream_width, stream_height),
+        ))
     }
 
     fn selection_context(&self) -> Option<SelectionContext> {

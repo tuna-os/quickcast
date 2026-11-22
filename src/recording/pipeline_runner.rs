@@ -27,8 +27,8 @@ pub(super) async fn build(
     );
 
     if settings.capture_mode() == CaptureMode::Selection {
-        let data = AreaSelector::select(raw_fd, streams, &Application::get().window()).await?;
-        pipeline_builder.select_area_data(data);
+        let crop = AreaSelector::select(raw_fd, streams, &Application::get().window()).await?;
+        pipeline_builder.crop(crop);
     }
 
     if profile.supports_audio() {

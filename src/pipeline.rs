@@ -1,11 +1,10 @@
-use anyhow::{Context, Ok, Result, bail, ensure};
+use anyhow::{Context, Ok, Result, ensure};
 use gst::prelude::*;
-use gtk::graphene::Rect;
 
 use std::{os::unix::io::RawFd, path::PathBuf};
 
 use crate::{
-    area_selector::SelectAreaData,
+    capture::{CaptureCrop, make_videosrc_bin},
     device::{self, DeviceClass},
     profile::Profile,
     screencast_portal::Stream,
@@ -24,7 +23,7 @@ pub struct PipelineBuilder {
     record_desktop_audio: bool,
     record_microphone: bool,
     camera: Option<(crate::bubble::CameraFeed, u32)>,
-    select_area_data: Option<SelectAreaData>,
+    crop: Option<CaptureCrop>,
 }
 
 impl PipelineBuilder {
@@ -44,7 +43,7 @@ impl PipelineBuilder {
             record_desktop_audio: false,
             record_microphone: false,
             camera: None,
-            select_area_data: None,
+            crop: None,
         }
     }
 
@@ -63,14 +62,14 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn select_area_data(&mut self, data: SelectAreaData) -> &mut Self {
-        self.select_area_data = Some(data);
+    pub fn crop(&mut self, crop: CaptureCrop) -> &mut Self {
+        self.crop = Some(crop);
         self
     }
 
     /// Builds the pipeline.
     ///
-    ///                   (If has select_area_data)
+    ///                        (If has crop)
     ///                        |             |
     ///                        v             v
     /// pipewiresrc-bin -> videoscale -> videocrop -> queue -> |
@@ -86,7 +85,7 @@ impl PipelineBuilder {
             streams = ?self.streams,
             record_desktop_audio = ?self.record_desktop_audio,
             record_microphone = ?self.record_microphone,
-            select_area_data = ?self.select_area_data,
+            crop = ?self.crop,
         );
 
         let pipeline = gst::Pipeline::new();
@@ -106,13 +105,13 @@ impl PipelineBuilder {
             .build()?;
         pipeline.add_many([videosrc_bin.upcast_ref(), &videoenc_queue, &filesink])?;
 
-        if let Some(ref data) = self.select_area_data {
+        if let Some(ref crop) = self.crop {
             let videoscale = gst::ElementFactory::make("videoscale").build()?;
-            let videocrop = make_videocrop(data)?;
+            let videocrop = make_videocrop(crop)?;
             pipeline.add_many([&videoscale, &videocrop])?;
 
             // x264enc requires even resolution.
-            let (stream_width, stream_height) = data.stream_size;
+            let (stream_width, stream_height) = crop.stream_size;
             let videoscale_caps = gst::Caps::builder("video/x-raw")
                 .field("width", round_to_even(stream_width))
                 .field("height", round_to_even(stream_height))
@@ -181,161 +180,15 @@ impl PipelineBuilder {
     }
 }
 
-fn make_pipewiresrc(fd: RawFd, path: &str) -> Result<gst::Element> {
-    let src = gst::ElementFactory::make("pipewiresrc")
-        .property("fd", fd)
-        .property("path", path)
-        .property("do-timestamp", true)
-        .property("provide-clock", false)
-        .property("keepalive-time", 1000)
-        .property("resend-last", true)
+/// Create a videocrop element that removes `crop` from the stream edges.
+fn make_videocrop(crop: &CaptureCrop) -> Result<gst::Element> {
+    let videocrop = gst::ElementFactory::make("videocrop")
+        .property("top", crop.top)
+        .property("left", crop.left)
+        .property("right", crop.right)
+        .property("bottom", crop.bottom)
         .build()?;
-
-    Ok(src)
-}
-
-fn make_videoflip() -> Result<gst::Element> {
-    let videoflip = gst::ElementFactory::make("videoflip")
-        .property_from_str("video-direction", "auto")
-        .build()?;
-
-    Ok(videoflip)
-}
-
-/// Create a videocrop element that computes the crop from the given coordinates
-/// and size.
-fn make_videocrop(data: &SelectAreaData) -> Result<gst::Element> {
-    let SelectAreaData {
-        selection,
-        paintable_rect,
-        stream_size,
-    } = data;
-
-    let (stream_width, stream_height) = stream_size;
-    let scale_factor_h = *stream_width as f32 / paintable_rect.width();
-    let scale_factor_v = *stream_height as f32 / paintable_rect.height();
-
-    if scale_factor_h != scale_factor_v {
-        tracing::warn!(
-            scale_factor_h,
-            scale_factor_v,
-            "Scale factors of horizontal and vertical are unequal"
-        );
-    }
-
-    // Both paintable and selection position are relative to the widget coordinates.
-    // To get the absolute position and so correct crop values, subtract the paintable
-    // rect's position from the selection rect.
-    let old_selection_rect = selection.rect();
-    let selection_rect_scaled = Rect::new(
-        old_selection_rect.x() - paintable_rect.x(),
-        old_selection_rect.y() - paintable_rect.y(),
-        old_selection_rect.width(),
-        old_selection_rect.height(),
-    )
-    .scale(scale_factor_h, scale_factor_v);
-
-    let raw_top_crop = selection_rect_scaled.y();
-    let raw_left_crop = selection_rect_scaled.x();
-    let raw_right_crop =
-        *stream_width as f32 - (selection_rect_scaled.width() + selection_rect_scaled.x());
-    let raw_bottom_crop =
-        *stream_height as f32 - (selection_rect_scaled.height() + selection_rect_scaled.y());
-
-    tracing::debug!(raw_top_crop, raw_left_crop, raw_right_crop, raw_bottom_crop);
-
-    let top_crop = round_to_even_f32(raw_top_crop).clamp(0, *stream_height);
-    let left_crop = round_to_even_f32(raw_left_crop).clamp(0, *stream_width);
-    let right_crop = round_to_even_f32(raw_right_crop).clamp(0, *stream_width);
-    let bottom_crop = round_to_even_f32(raw_bottom_crop).clamp(0, *stream_height);
-
-    tracing::debug!(top_crop, left_crop, right_crop, bottom_crop);
-
-    // x264enc requires even resolution.
-    let crop = gst::ElementFactory::make("videocrop")
-        .property("top", top_crop)
-        .property("left", left_crop)
-        .property("right", right_crop)
-        .property("bottom", bottom_crop)
-        .build()?;
-    Ok(crop)
-}
-
-/// Creates a bin with a src pad for multiple pipewire streams.
-///
-/// Single stream:
-///
-/// pipewiresrc -> videoflip -> videorate
-///
-/// Multiple streams:
-///
-/// pipewiresrc1 -> videoflip -> |
-///                              |
-/// pipewiresrc2 -> videoflip -> | -> compositor -> videorate
-///                              |
-/// pipewiresrcn -> videoflip -> |
-pub fn make_videosrc_bin(
-    fd: RawFd,
-    streams: &[Stream],
-    framerate: gst::Fraction,
-) -> Result<gst::Bin> {
-    // TODO Create a bin that hotswaps compositor depending whether gl is supported or not.
-
-    let bin = gst::Bin::builder().name("kooha-pipewiresrc-bin").build();
-
-    let videorate = gst::ElementFactory::make("videorate")
-        .property("skip-to-first", true)
-        .build()?;
-    let videorate_capsfilter = gst::ElementFactory::make("capsfilter")
-        .property(
-            "caps",
-            gst::Caps::builder("video/x-raw")
-                .field("framerate", framerate)
-                .build(),
-        )
-        .build()?;
-    bin.add_many([&videorate, &videorate_capsfilter])?;
-    videorate.link(&videorate_capsfilter)?;
-
-    match streams {
-        [] => bail!("No streams provided"),
-        [stream] => {
-            let pipewiresrc = make_pipewiresrc(fd, &stream.node_id().to_string())?;
-            let videoflip = make_videoflip()?;
-            bin.add_many([&pipewiresrc, &videoflip])?;
-            gst::Element::link_many([&pipewiresrc, &videoflip, &videorate])?;
-        }
-        streams => {
-            let compositor = gst::ElementFactory::make("compositor").build()?;
-            bin.add(&compositor)?;
-            compositor.link(&videorate)?;
-
-            let mut last_pos = 0;
-            for stream in streams {
-                let pipewiresrc = make_pipewiresrc(fd, &stream.node_id().to_string())?;
-                let videoflip = make_videoflip()?;
-                bin.add_many([&pipewiresrc, &videoflip])?;
-                pipewiresrc.link(&videoflip)?;
-
-                let compositor_sink_pad = compositor
-                    .request_pad_simple("sink_%u")
-                    .context("Failed to request sink_%u pad from compositor")?;
-                compositor_sink_pad.set_property("xpos", last_pos);
-                videoflip
-                    .static_pad("src")
-                    .unwrap()
-                    .link(&compositor_sink_pad)?;
-
-                let (stream_width, _) = stream.size().unwrap();
-                last_pos += stream_width;
-            }
-        }
-    }
-
-    let src_pad = videorate_capsfilter.static_pad("src").unwrap();
-    bin.add_pad(&gst::GhostPad::with_target(&src_pad)?)?;
-
-    Ok(bin)
+    Ok(videocrop)
 }
 
 /// Creates a new audio src element with the given name.
@@ -435,10 +288,6 @@ fn round_to_even(number: i32) -> i32 {
     number / 2 * 2
 }
 
-fn round_to_even_f32(number: f32) -> i32 {
-    (number / 2.0).round() as i32 * 2
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -456,26 +305,8 @@ mod test {
     }
 
     #[test]
-    fn odd_round_to_even_f32() {
-        assert_even!(round_to_even_f32(3.0));
-        assert_even!(round_to_even_f32(99.0));
-    }
-
-    #[test]
     fn even_round_to_even() {
         assert_even!(round_to_even(50));
         assert_even!(round_to_even(4));
-    }
-
-    #[test]
-    fn even_round_to_even_f32() {
-        assert_even!(round_to_even_f32(300.0));
-        assert_even!(round_to_even_f32(6.0));
-    }
-
-    #[test]
-    fn float_round_to_even_f32() {
-        assert_even!(round_to_even_f32(5.3));
-        assert_even!(round_to_even_f32(2.9));
     }
 }
