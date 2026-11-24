@@ -1,46 +1,14 @@
-//! One camera capture feeds both the floating preview and window-only recordings.
+//! The floating webcam window. Its camera capture feeds the preview and a
+//! [`CameraFeed`] that window-only recordings read.
 use anyhow::{Context, Result};
 use gst::prelude::*;
 use gtk::{glib, prelude::*};
-use std::sync::{Arc, Mutex};
+
+use crate::camera::CameraFeed;
 
 /// The Shell extension finds the bubble by this exact title, so it is an IPC
 /// value, not UI text: do not pass it through gettext.
 pub const WINDOW_TITLE: &str = "Quickcast Webcam";
-
-#[derive(Clone, Debug)]
-pub struct CameraFeed {
-    receiver: Arc<Mutex<glib::WeakRef<gst_app::AppSrc>>>,
-    pub placement: Arc<Mutex<(f64, f64, f64)>>,
-}
-
-impl CameraFeed {
-    pub fn source(&self) -> Result<gst::Bin> {
-        let source = gst::ElementFactory::make("appsrc")
-            .property("is-live", true)
-            .property("do-timestamp", true)
-            .property("format", gst::Format::Time)
-            .property("max-buffers", 2u64)
-            .property_from_str("leaky-type", "downstream")
-            .build()?
-            .downcast::<gst_app::AppSrc>()
-            .unwrap();
-        *self.receiver.lock().unwrap() = source.downgrade();
-        let bin = gst::Bin::new();
-        bin.add(&source)?;
-        bin.add_pad(&gst::GhostPad::with_target(
-            &source.static_pad("src").unwrap(),
-        )?)?;
-        Ok(bin)
-    }
-
-    pub fn place(&self, x: f64, y: f64, width: f64) {
-        if x.is_finite() && y.is_finite() && width.is_finite() {
-            *self.placement.lock().unwrap() =
-                (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0), width.clamp(0.05, 0.8));
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct Bubble {
@@ -71,32 +39,14 @@ impl Bubble {
             .build()?
             .downcast::<gst_app::AppSink>()
             .unwrap();
-        let feed = CameraFeed {
-            receiver: Arc::new(Mutex::new(glib::WeakRef::new())),
-            placement: Arc::new(Mutex::new((
-                f64::from(corner % 2),
-                f64::from(corner / 2),
-                0.2,
-            ))),
-        };
+        let feed = CameraFeed::new(corner);
         samples.set_callbacks(
             gst_app::AppSinkCallbacks::builder()
                 .new_sample({
                     let feed = feed.clone();
                     move |sink| {
                         let sample = sink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
-                        if let Some(receiver) = feed.receiver.lock().unwrap().upgrade()
-                            && let Some(buffer) = sample.buffer()
-                        {
-                            receiver.set_caps(sample.caps().map(ToOwned::to_owned).as_ref());
-                            let mut frame = buffer.copy();
-                            // The recording has a different running-time origin from the
-                            // camera preview. Timestamp on appsrc's recording clock.
-                            let frame_mut = frame.make_mut();
-                            frame_mut.set_pts(None);
-                            frame_mut.set_dts(None);
-                            let _ = receiver.push_buffer(frame);
-                        }
+                        feed.push(&sample);
                         Ok(gst::FlowSuccess::Ok)
                     }
                 })

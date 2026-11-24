@@ -272,4 +272,32 @@ mod test {
             "src/pipeline.rs uses the area selector module"
         );
     }
+
+    /// The recording side (this module, the pipeline builder and the camera
+    /// compositing) builds GStreamer graphs only. If it names a window module,
+    /// a change to a window can break recording, as `CameraFeed` in
+    /// `bubble.rs` and `SelectAreaData` in `area_selector` once did. Only the
+    /// code above each file's tests is checked, so this test does not match
+    /// itself.
+    #[test]
+    fn capture_side_does_not_import_window_modules() {
+        for (file, source) in [
+            ("capture.rs", include_str!("capture.rs")),
+            ("pipeline.rs", include_str!("pipeline.rs")),
+            ("camera.rs", include_str!("camera.rs")),
+        ] {
+            let code = source.split("#[cfg(test)]").next().unwrap();
+            for module in ["area_selector", "bubble", "window", "application"] {
+                assert!(
+                    !code.contains(&format!("{module}::"))
+                        && !code.contains(&format!("crate::{module}")),
+                    "src/{file} uses the {module} module"
+                );
+            }
+            assert!(
+                !code.contains("Application"),
+                "src/{file} uses the application"
+            );
+        }
+    }
 }

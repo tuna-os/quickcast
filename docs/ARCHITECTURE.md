@@ -15,6 +15,7 @@ flowchart LR
         REC[Recording<br/>state machine]
         BUB[Bubble<br/>webcam preview window]
         PIPE[PipelineBuilder<br/>GStreamer pipeline]
+        CAM[CameraFeed<br/>camera.rs]
     end
     PORTAL[xdg-desktop-portal<br/>ScreenCast]
     PW[(PipeWire)]
@@ -29,7 +30,8 @@ flowchart LR
     REC -->|pipeline_runner| PIPE
     PIPE -->|pipewiresrc| PW
     BUB -->|camera source| V4L
-    PIPE -->|camera frames for window-only capture| BUB
+    BUB -->|pushes camera frames| CAM
+    PIPE -->|camera frames for window-only capture| CAM
     EXT -->|org.gtk.Actions.Activate on session bus| APP
     APP -->|bubble-position| WIN
 ```
@@ -44,8 +46,8 @@ flowchart LR
 | Capture source and crop | `src/capture.rs` | The PipeWire video source bin (`make_videosrc_bin`) and `CaptureCrop`, the stream-pixel crop computed from a region selection. Shared by the area selector preview and the recording pipeline, which do not import each other. |
 | Pipeline builder | `src/pipeline.rs` | `PipelineBuilder` assembles the recording pipeline from the capture source: optional scale and crop, audio sources, encoders and muxer, and the file sink. |
 | Encoder profiles | `data/resources/profiles.yml` | Named container profiles (WebM/VP8, MP4/H.264 + AAC, and others) that hold the encoder and muxer pipeline fragments. Loaded from the GResource bundle by `src/profile.rs`. |
-| Camera | `src/camera.rs` | V4L2 device enumeration, the camera source bin, and `attach()`, which composites camera frames into window-only recordings. |
-| Webcam bubble | `src/bubble.rs` | Separate window with its own GStreamer pipeline. It feeds a preview sink and an `appsrc`-backed `CameraFeed`. The feed is shared with the recording pipeline. |
+| Camera | `src/camera.rs` | V4L2 device enumeration, the camera source bin, `CameraFeed` (the `appsrc`-backed hand-off of camera frames and the bubble placement to window-only recordings), and `attach()`, which composites the feed into the recording. |
+| Webcam bubble | `src/bubble.rs` | Separate window with its own GStreamer pipeline. It feeds a preview sink and pushes every frame to a `CameraFeed`, which the recording pipeline reads. The capture side (`capture.rs`, `pipeline.rs`, `camera.rs`) does not import window modules; a test in `capture.rs` checks this. |
 | Area selection | `src/area_selector/` | Region picker used when the capture mode is a selected area. Returns a `CaptureCrop`. |
 | Shell companion | `extension/` | GNOME Shell extension (`quickcast@tunaos.org`). Panel toggle, and placement and stacking of the bubble window. |
 | Packaging and build | `meson.build`, `Cargo.toml`, `org.tunaos.Quickcast.json`, `data/` | Meson drives the Cargo build and installs the resources, schema and desktop files. The Flatpak manifest builds the app. |

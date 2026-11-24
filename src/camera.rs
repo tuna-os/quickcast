@@ -1,6 +1,80 @@
 //! Camera capture is a separate input, burned into the video after screen cropping.
 use anyhow::{Context, Result};
 use gst::prelude::*;
+use gtk::glib;
+use std::sync::{Arc, Mutex};
+
+/// Camera frames for window-only recordings. The webcam bubble's capture
+/// pushes every frame here, so a recording does not open the camera a second
+/// time. `placement` is the bubble's relative position and size, `(x, y,
+/// width)`, which the recording follows.
+#[derive(Clone, Debug)]
+pub struct CameraFeed {
+    receiver: Arc<Mutex<glib::WeakRef<gst_app::AppSrc>>>,
+    pub placement: Arc<Mutex<(f64, f64, f64)>>,
+}
+
+impl CameraFeed {
+    /// A feed with no recording attached, placed in `corner` (0 top left,
+    /// 1 top right, 2 bottom left, 3 bottom right).
+    pub fn new(corner: u32) -> Self {
+        Self {
+            receiver: Arc::new(Mutex::new(glib::WeakRef::new())),
+            placement: Arc::new(Mutex::new((
+                f64::from(corner % 2),
+                f64::from(corner / 2),
+                0.2,
+            ))),
+        }
+    }
+
+    pub fn source(&self) -> Result<gst::Bin> {
+        let source = gst::ElementFactory::make("appsrc")
+            .property("is-live", true)
+            .property("do-timestamp", true)
+            .property("format", gst::Format::Time)
+            .property("max-buffers", 2u64)
+            .property_from_str("leaky-type", "downstream")
+            .build()?
+            .downcast::<gst_app::AppSrc>()
+            .unwrap();
+        *self.receiver.lock().unwrap() = source.downgrade();
+        let bin = gst::Bin::new();
+        bin.add(&source)?;
+        bin.add_pad(&gst::GhostPad::with_target(
+            &source.static_pad("src").unwrap(),
+        )?)?;
+        Ok(bin)
+    }
+
+    pub fn place(&self, x: f64, y: f64, width: f64) {
+        if x.is_finite() && y.is_finite() && width.is_finite() {
+            *self.placement.lock().unwrap() =
+                (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0), width.clamp(0.05, 0.8));
+        }
+    }
+
+    /// Hands one camera sample to the recording, if one is attached.
+    pub fn push(&self, sample: &gst::Sample) {
+        if let Some(receiver) = self.receiver.lock().unwrap().upgrade()
+            && let Some(buffer) = sample.buffer()
+        {
+            receiver.set_caps(sample.caps().map(ToOwned::to_owned).as_ref());
+            let _ = receiver.push_buffer(retimed(buffer));
+        }
+    }
+}
+
+/// A copy of `buffer` without timestamps. The recording has a different
+/// running-time origin from the camera preview, so appsrc timestamps the
+/// frame on the recording's clock.
+fn retimed(buffer: &gst::BufferRef) -> gst::Buffer {
+    let mut frame = buffer.copy();
+    let frame_mut = frame.make_mut();
+    frame_mut.set_pts(None);
+    frame_mut.set_dts(None);
+    frame
+}
 
 pub fn devices() -> Vec<(String, String)> {
     let monitor = gst::DeviceMonitor::new();
@@ -100,7 +174,7 @@ pub fn attach(
     pipeline: &gst::Pipeline,
     screen: &gst::Element,
     output: &gst::Element,
-    camera: Option<(&crate::bubble::CameraFeed, u32)>,
+    camera: Option<(&CameraFeed, u32)>,
 ) -> Result<()> {
     let input = camera
         .map(|(device, corner)| device.source().map(|bin| (bin, corner)))
@@ -249,6 +323,41 @@ mod tests {
             assert_eq!(std::fs::read_dir(directory).unwrap().count(), 0);
             std::fs::remove_dir(directory).unwrap();
         }
+    }
+
+    #[test]
+    fn feed_starts_in_its_corner() {
+        for (corner, x, y) in [(0, 0.0, 0.0), (1, 1.0, 0.0), (2, 0.0, 1.0), (3, 1.0, 1.0)] {
+            assert_eq!(*CameraFeed::new(corner).placement.lock().unwrap(), (x, y, 0.2));
+        }
+    }
+
+    #[test]
+    fn feed_placement_is_clamped_and_ignores_non_finite_values() {
+        let feed = CameraFeed::new(0);
+        feed.place(-1.0, 2.0, 0.01);
+        assert_eq!(*feed.placement.lock().unwrap(), (0.0, 1.0, 0.05));
+        feed.place(0.5, 0.25, 0.9);
+        assert_eq!(*feed.placement.lock().unwrap(), (0.5, 0.25, 0.8));
+        feed.place(f64::NAN, 0.0, 0.2);
+        feed.place(0.0, f64::INFINITY, 0.2);
+        assert_eq!(*feed.placement.lock().unwrap(), (0.5, 0.25, 0.8));
+    }
+
+    #[test]
+    fn retimed_frame_has_no_timestamps_and_the_same_data() {
+        gst::init().unwrap();
+        let mut buffer = gst::Buffer::from_slice(vec![1u8, 2, 3]);
+        {
+            let buffer = buffer.get_mut().unwrap();
+            buffer.set_pts(gst::ClockTime::from_seconds(5));
+            buffer.set_dts(gst::ClockTime::from_seconds(4));
+        }
+        let frame = retimed(&buffer);
+        assert_eq!(frame.pts(), None);
+        assert_eq!(frame.dts(), None);
+        assert_eq!(frame.map_readable().unwrap().as_slice(), &[1u8, 2, 3]);
+        assert_eq!(buffer.pts(), Some(gst::ClockTime::from_seconds(5)));
     }
 
     #[test]
