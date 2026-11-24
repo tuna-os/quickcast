@@ -346,7 +346,7 @@ impl Window {
         }
     }
 
-    pub fn camera_feed(&self) -> Result<crate::bubble::CameraFeed> {
+    pub fn camera_feed(&self) -> Result<crate::camera::CameraFeed> {
         self.imp()
             .bubble
             .borrow()

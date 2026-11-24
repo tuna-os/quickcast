@@ -22,7 +22,7 @@ pub struct PipelineBuilder {
     streams: Vec<Stream>,
     record_desktop_audio: bool,
     record_microphone: bool,
-    camera: Option<(crate::bubble::CameraFeed, u32)>,
+    camera: Option<(crate::camera::CameraFeed, u32)>,
     crop: Option<CaptureCrop>,
 }
 
@@ -57,7 +57,7 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn camera(&mut self, device: crate::bubble::CameraFeed, corner: u32) -> &mut Self {
+    pub fn camera(&mut self, device: crate::camera::CameraFeed, corner: u32) -> &mut Self {
         self.camera = Some((device, corner));
         self
     }
