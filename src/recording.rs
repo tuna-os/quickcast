@@ -384,3 +384,6 @@ fn new_recording_path(saving_location: &Path, extension: impl AsRef<OsStr>) -> P
 
     path
 }
+
+#[cfg(test)]
+mod tests;
